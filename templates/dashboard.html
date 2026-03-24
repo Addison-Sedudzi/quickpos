@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - POS System{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Welcome back, {{ session.full_name }}{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('pos') }}" class="btn btn-primary"><i class="fas fa-plus"></i> New Sale</a>
+{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon blue"><i class="fas fa-receipt"></i></div>
+        <div class="stat-info">
+            <h4>Today's Sales</h4>
+            <div class="value">{{ today_sales['count'] }}</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green"><i class="fas fa-coins"></i></div>
+        <div class="stat-info">
+            <h4>Today's Revenue</h4>
+            <div class="value">GHS {{ "%.2f"|format(today_sales['total']) }}</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon orange"><i class="fas fa-boxes-stacked"></i></div>
+        <div class="stat-info">
+            <h4>Total Products</h4>
+            <div class="value">{{ total_products }}</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon red"><i class="fas fa-triangle-exclamation"></i></div>
+        <div class="stat-info">
+            <h4>Low Stock Alerts</h4>
+            <div class="value">{{ low_stock }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Sales Chart -->
+    <div class="card">
+        <div class="card-header"><h3><i class="fas fa-chart-line"></i> Sales (Last 7 Days)</h3></div>
+        <div class="card-body">
+            <canvas id="salesChart" height="220"></canvas>
+        </div>
+    </div>
+
+    <!-- Low Stock Alerts -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-exclamation-triangle"></i> Low Stock Items</h3>
+            <a href="{{ url_for('inventory') }}" class="btn btn-sm btn-outline">View All</a>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr><th>Product</th><th>Stock</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in low_stock_products %}
+                        <tr>
+                            <td><strong>{{ p.product_name }}</strong></td>
+                            <td>{{ p.quantity }}</td>
+                            <td>
+                                {% if p.quantity == 0 %}
+                                <span class="badge badge-danger">Out of Stock</span>
+                                {% else %}
+                                <span class="badge badge-warning">Low Stock</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted" style="padding:24px;">All stock levels are healthy</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Sales -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3><i class="fas fa-clock-rotate-left"></i> Recent Transactions</h3>
+        <a href="{{ url_for('reports') }}" class="btn btn-sm btn-outline">Full Report</a>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>Sale #</th><th>Date</th><th>Cashier</th><th>Customer</th><th>Payment</th><th>Total</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in recent_sales %}
+                    <tr>
+                        <td><strong>#{{ s.sale_id }}</strong></td>
+                        <td>{{ s.date[:16] }}</td>
+                        <td>{{ s.cashier }}</td>
+                        <td>{{ s.customer_name }}</td>
+                        <td><span class="badge badge-info">{{ s.payment_method }}</span></td>
+                        <td><strong>GHS {{ "%.2f"|format(s.total_amount) }}</strong></td>
+                        <td><a href="{{ url_for('receipt', sale_id=s.sale_id) }}" class="btn btn-sm btn-outline"><i class="fas fa-receipt"></i></a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted" style="padding:24px;">No sales yet today</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const chartData = {{ sales_chart_data|safe }};
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: chartData.map(d => d.date.slice(5)),
+            datasets: [{
+                label: 'Revenue (GHS)',
+                data: chartData.map(d => d.total),
+                backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                borderColor: '#2563eb',
+                borderWidth: 2,
+                borderRadius: 6,
+                hoverBackgroundColor: 'rgba(37, 99, 235, 0.3)',
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+</script>
+{% endblock %}

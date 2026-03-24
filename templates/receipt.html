@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt #{{ sale.sale_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { background: #f1f5f9; padding: 20px; }
+        .print-btn {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="print-btn no-print">
+        <button onclick="window.print()" class="btn btn-primary"><i class="fas fa-print"></i> Print Receipt</button>
+        <button onclick="window.close()" class="btn btn-outline" style="margin-left:8px;">Close</button>
+    </div>
+
+    <div class="receipt-container">
+        <div class="receipt-header">
+            <h2>QuickPOS Store</h2>
+            <p>123 Main Street, Kumasi</p>
+            <p>Tel: 024-000-0000</p>
+            <hr style="border: 1px dashed #e2e8f0; margin: 12px 0;">
+            <p><strong>SALES RECEIPT</strong></p>
+            <p>Receipt #: {{ sale.sale_id }}</p>
+            <p>Date: {{ sale.date }}</p>
+            <p>Cashier: {{ sale.cashier }}</p>
+            <p>Customer: {{ sale.customer_name }}</p>
+        </div>
+
+        <div class="receipt-items">
+            <table>
+                <thead>
+                    <tr style="border-bottom: 1px dashed #ccc;">
+                        <td><strong>Item</strong></td>
+                        <td style="text-align:center;"><strong>Qty</strong></td>
+                        <td style="text-align:right;"><strong>Price</strong></td>
+                        <td style="text-align:right;"><strong>Total</strong></td>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>
+                            {{ item.product_name }}
+                            {% if item.barcode %}
+                            <br><img src="/api/barcode_image/{{ item.barcode }}" alt="{{ item.barcode }}" style="width:100px; height:auto; margin-top:2px;">
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">{{ item.quantity }}</td>
+                        <td style="text-align:right;">{{ "%.2f"|format(item.price) }}</td>
+                        <td style="text-align:right;">{{ "%.2f"|format(item.total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="receipt-totals">
+            <table style="font-size: 13px;">
+                <tr>
+                    <td>Subtotal:</td>
+                    <td style="text-align:right;">GHS {{ "%.2f"|format(sale.subtotal) }}</td>
+                </tr>
+                {% if sale.discount > 0 %}
+                <tr>
+                    <td>Discount:</td>
+                    <td style="text-align:right;">- GHS {{ "%.2f"|format(sale.discount) }}</td>
+                </tr>
+                {% endif %}
+                {% if sale.tax > 0 %}
+                <tr>
+                    <td>Tax:</td>
+                    <td style="text-align:right;">GHS {{ "%.2f"|format(sale.tax) }}</td>
+                </tr>
+                {% endif %}
+                <tr style="font-size: 16px; font-weight: 700;">
+                    <td>TOTAL:</td>
+                    <td style="text-align:right;">GHS {{ "%.2f"|format(sale.total_amount) }}</td>
+                </tr>
+                <tr><td colspan="2"><hr style="border: 1px dashed #e2e8f0;"></td></tr>
+                <tr>
+                    <td>Payment Method:</td>
+                    <td style="text-align:right;">{{ sale.payment_method }}</td>
+                </tr>
+                {% if payment %}
+                <tr>
+                    <td>Amount Paid:</td>
+                    <td style="text-align:right;">GHS {{ "%.2f"|format(payment.amount_paid) }}</td>
+                </tr>
+                {% if payment.change_given > 0 %}
+                <tr>
+                    <td>Change:</td>
+                    <td style="text-align:right;">GHS {{ "%.2f"|format(payment.change_given) }}</td>
+                </tr>
+                {% endif %}
+                {% endif %}
+            </table>
+        </div>
+
+        <div class="receipt-footer">
+            <p><strong>Thank you for shopping with us!</strong></p>
+            <p>Goods sold are not returnable</p>
+            <p style="margin-top: 8px;">Powered by QuickPOS</p>
+        </div>
+    </div>
+</body>
+</html>

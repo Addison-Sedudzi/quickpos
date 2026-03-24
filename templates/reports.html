@@ -1,0 +1,364 @@
+{% extends 'base.html' %}
+{% block title %}Reports - POS System{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+{% block page_subtitle %}Monitor business performance{% endblock %}
+
+{% block content %}
+<!-- Report Tabs -->
+<div class="report-tabs">
+    <button class="report-tab active" onclick="switchTab('daily')">Daily Sales</button>
+    <button class="report-tab" onclick="switchTab('weekly')">Weekly Sales</button>
+    <button class="report-tab" onclick="switchTab('product')">Product Performance</button>
+    <button class="report-tab" onclick="switchTab('inventory')">Inventory Report</button>
+    <button class="report-tab" onclick="switchTab('cashier')">Cashier Report</button>
+    <button class="report-tab" onclick="switchTab('profit')">Profit Analytics</button>
+</div>
+
+<!-- Export Buttons -->
+<div class="d-flex gap-2 mb-4">
+    <a href="/api/export/sales" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export Sales CSV</a>
+    <a href="/api/export/products" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export Products CSV</a>
+    <a href="/api/export/inventory" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export Inventory CSV</a>
+    <a href="/api/export/customers" class="btn btn-sm btn-outline"><i class="fas fa-download"></i> Export Customers CSV</a>
+</div>
+
+<!-- Daily Sales -->
+<div class="report-section active" id="section-daily">
+    <div class="d-flex gap-3 align-center mb-4">
+        <input type="date" id="dailyDate" class="form-control" style="max-width:200px;" onchange="loadDailyReport()">
+        <button class="btn btn-primary" onclick="loadDailyReport()"><i class="fas fa-refresh"></i> Load</button>
+    </div>
+    <div class="stats-grid" id="dailyStats"></div>
+    <div class="grid-2">
+        <div class="chart-container"><canvas id="dailyPaymentChart" height="250"></canvas></div>
+        <div class="card">
+            <div class="card-header"><h3>Transactions</h3></div>
+            <div class="card-body" style="padding:0; max-height:400px; overflow-y:auto;">
+                <table id="dailySalesTable">
+                    <thead><tr><th>Sale #</th><th>Cashier</th><th>Customer</th><th>Payment</th><th>Total</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Weekly Sales -->
+<div class="report-section" id="section-weekly">
+    <div class="d-flex gap-3 align-center mb-4">
+        <label style="font-size:13px; font-weight:600;">Week ending:</label>
+        <input type="date" id="weeklyDate" class="form-control" style="max-width:200px;" onchange="loadWeeklyReport()">
+        <button class="btn btn-primary" onclick="loadWeeklyReport()"><i class="fas fa-refresh"></i> Load</button>
+    </div>
+    <div class="stats-grid" id="weeklyStats"></div>
+    <div class="chart-container"><canvas id="weeklyChart" height="300"></canvas></div>
+</div>
+
+<!-- Product Performance -->
+<div class="report-section" id="section-product">
+    <button class="btn btn-primary mb-4" onclick="loadProductReport()"><i class="fas fa-refresh"></i> Load Report</button>
+    <div class="card">
+        <div class="card-body" style="padding:0;">
+            <table id="productTable">
+                <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Current Stock</th><th>Total Sold</th><th>Revenue</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Inventory Report -->
+<div class="report-section" id="section-inventory">
+    <button class="btn btn-primary mb-4" onclick="loadInventoryReport()"><i class="fas fa-refresh"></i> Load Report</button>
+    <div class="stats-grid" id="inventoryStats"></div>
+    <div class="card">
+        <div class="card-body" style="padding:0;">
+            <table id="inventoryTable">
+                <thead><tr><th>Product</th><th>Category</th><th>Stock</th><th>Threshold</th><th>Value</th><th>Status</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Cashier Report -->
+<div class="report-section" id="section-cashier">
+    <div class="d-flex gap-3 align-center mb-4">
+        <input type="date" id="cashierDate" class="form-control" style="max-width:200px;" onchange="loadCashierReport()">
+        <button class="btn btn-primary" onclick="loadCashierReport()"><i class="fas fa-refresh"></i> Load</button>
+    </div>
+    <div class="card">
+        <div class="card-body" style="padding:0;">
+            <table id="cashierTable">
+                <thead><tr><th>Cashier</th><th>Username</th><th>Total Sales</th><th>Revenue</th><th>Avg Sale</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Profit Analytics -->
+<div class="report-section" id="section-profit">
+    <div class="d-flex gap-3 align-center mb-4">
+        <label style="font-size:13px;font-weight:600;">Period:</label>
+        <select id="profitPeriod" class="form-control" style="max-width:150px;" onchange="loadProfitReport()">
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30" selected>Last 30 days</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadProfitReport()"><i class="fas fa-refresh"></i> Load</button>
+    </div>
+    <div class="grid-2 mb-4">
+        <div class="chart-container"><canvas id="profitTrendChart" height="280"></canvas></div>
+        <div class="chart-container"><canvas id="categoryPieChart" height="280"></canvas></div>
+    </div>
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-header"><h3><i class="fas fa-trophy"></i> Top Selling Products</h3></div>
+            <div class="card-body" style="padding:0;"><table id="topProductsTable">
+                <thead><tr><th>#</th><th>Product</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
+                <tbody></tbody>
+            </table></div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h3><i class="fas fa-clock"></i> Peak Sales Hours</h3></div>
+            <div class="card-body"><canvas id="hourlyChart" height="200"></canvas></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Set default dates
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('dailyDate').value = today;
+document.getElementById('weeklyDate').value = today;
+document.getElementById('cashierDate').value = today;
+
+let dailyPaymentChart = null;
+let weeklyChartInstance = null;
+
+function switchTab(tab) {
+    document.querySelectorAll('.report-tab').forEach((el, i) => el.classList.remove('active'));
+    document.querySelectorAll('.report-section').forEach(el => el.classList.remove('active'));
+    document.getElementById('section-' + tab).classList.add('active');
+    event.target.classList.add('active');
+
+    if (tab === 'daily') loadDailyReport();
+    else if (tab === 'weekly') loadWeeklyReport();
+    else if (tab === 'product') loadProductReport();
+    else if (tab === 'inventory') loadInventoryReport();
+    else if (tab === 'cashier') loadCashierReport();
+    else if (tab === 'profit') loadProfitReport();
+}
+
+function loadDailyReport() {
+    const date = document.getElementById('dailyDate').value;
+    fetch('/api/reports/daily?date=' + date).then(r => r.json()).then(data => {
+        const s = data.summary;
+        document.getElementById('dailyStats').innerHTML = `
+            <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-receipt"></i></div>
+                <div class="stat-info"><h4>Transactions</h4><div class="value">${s.total_transactions}</div></div></div>
+            <div class="stat-card"><div class="stat-icon green"><i class="fas fa-coins"></i></div>
+                <div class="stat-info"><h4>Revenue</h4><div class="value">GHS ${s.total_revenue.toFixed(2)}</div></div></div>
+            <div class="stat-card"><div class="stat-icon orange"><i class="fas fa-tag"></i></div>
+                <div class="stat-info"><h4>Discounts</h4><div class="value">GHS ${s.total_discounts.toFixed(2)}</div></div></div>
+            <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-calculator"></i></div>
+                <div class="stat-info"><h4>Avg Transaction</h4><div class="value">GHS ${s.avg_transaction.toFixed(2)}</div></div></div>
+        `;
+
+        // Payment chart
+        if (dailyPaymentChart) dailyPaymentChart.destroy();
+        const pb = data.payment_breakdown;
+        if (pb.length > 0) {
+            const ctx = document.getElementById('dailyPaymentChart').getContext('2d');
+            dailyPaymentChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: pb.map(p => p.payment_method),
+                    datasets: [{ data: pb.map(p => p.total), backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444'] }]
+                },
+                options: { responsive: true, plugins: { title: { display: true, text: 'Revenue by Payment Method' } } }
+            });
+        }
+
+        // Sales table
+        const tbody = document.querySelector('#dailySalesTable tbody');
+        tbody.innerHTML = data.sales.map(s => `
+            <tr><td><strong>#${s.sale_id}</strong></td><td>${s.cashier}</td><td>${s.customer_name}</td>
+                <td><span class="badge badge-info">${s.payment_method}</span></td>
+                <td><strong>GHS ${s.total_amount.toFixed(2)}</strong></td></tr>
+        `).join('') || '<tr><td colspan="5" class="text-center text-muted">No sales for this date</td></tr>';
+    });
+}
+
+function loadWeeklyReport() {
+    const date = document.getElementById('weeklyDate').value;
+    fetch('/api/reports/weekly?end_date=' + date).then(r => r.json()).then(data => {
+        const s = data.summary;
+        document.getElementById('weeklyStats').innerHTML = `
+            <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-receipt"></i></div>
+                <div class="stat-info"><h4>Total Transactions</h4><div class="value">${s.total_transactions}</div></div></div>
+            <div class="stat-card"><div class="stat-icon green"><i class="fas fa-coins"></i></div>
+                <div class="stat-info"><h4>Total Revenue</h4><div class="value">GHS ${s.total_revenue.toFixed(2)}</div></div></div>
+            <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-calculator"></i></div>
+                <div class="stat-info"><h4>Avg Transaction</h4><div class="value">GHS ${s.avg_transaction.toFixed(2)}</div></div></div>
+        `;
+
+        if (weeklyChartInstance) weeklyChartInstance.destroy();
+        const ctx = document.getElementById('weeklyChart').getContext('2d');
+        weeklyChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.daily_totals.map(d => d.date.slice(5)),
+                datasets: [{
+                    label: 'Revenue (GHS)',
+                    data: data.daily_totals.map(d => d.total),
+                    backgroundColor: 'rgba(37,99,235,0.2)',
+                    borderColor: '#2563eb', borderWidth: 2, borderRadius: 6,
+                }, {
+                    label: 'Transactions',
+                    data: data.daily_totals.map(d => d.count),
+                    type: 'line', borderColor: '#10b981', tension: 0.3,
+                    yAxisID: 'y1',
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Revenue (GHS)' } },
+                    y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Transactions' }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    });
+}
+
+function loadProductReport() {
+    fetch('/api/reports/product_performance').then(r => r.json()).then(data => {
+        const tbody = document.querySelector('#productTable tbody');
+        tbody.innerHTML = data.map(p => `
+            <tr><td><strong>${p.product_name}</strong></td><td>${p.category}</td>
+                <td>GHS ${p.price.toFixed(2)}</td><td>${p.current_stock}</td>
+                <td><strong>${p.total_sold}</strong></td>
+                <td><strong>GHS ${p.total_revenue.toFixed(2)}</strong></td></tr>
+        `).join('') || '<tr><td colspan="6" class="text-center text-muted">No data</td></tr>';
+    });
+}
+
+function loadInventoryReport() {
+    fetch('/api/reports/inventory').then(r => r.json()).then(data => {
+        const s = data.summary;
+        document.getElementById('inventoryStats').innerHTML = `
+            <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-boxes-stacked"></i></div>
+                <div class="stat-info"><h4>Total Products</h4><div class="value">${s.total_products}</div></div></div>
+            <div class="stat-card"><div class="stat-icon green"><i class="fas fa-cubes"></i></div>
+                <div class="stat-info"><h4>Total Stock</h4><div class="value">${s.total_stock}</div></div></div>
+            <div class="stat-card"><div class="stat-icon orange"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="stat-info"><h4>Low Stock</h4><div class="value">${s.low_stock_count}</div></div></div>
+            <div class="stat-card"><div class="stat-icon cyan"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="stat-info"><h4>Stock Value</h4><div class="value">GHS ${s.total_stock_value.toFixed(2)}</div></div></div>
+        `;
+
+        const tbody = document.querySelector('#inventoryTable tbody');
+        tbody.innerHTML = data.products.map(p => `
+            <tr><td><strong>${p.product_name}</strong></td><td>${p.category}</td>
+                <td>${p.quantity}</td><td>${p.low_stock_threshold}</td>
+                <td>GHS ${(p.price * p.quantity).toFixed(2)}</td>
+                <td>${p.is_low_stock ? (p.quantity === 0 ? '<span class="badge badge-danger">Out of Stock</span>' : '<span class="badge badge-warning">Low Stock</span>') : '<span class="badge badge-success">OK</span>'}</td></tr>
+        `).join('');
+    });
+}
+
+function loadCashierReport() {
+    const date = document.getElementById('cashierDate').value;
+    fetch('/api/reports/cashier?date=' + date).then(r => r.json()).then(data => {
+        const tbody = document.querySelector('#cashierTable tbody');
+        tbody.innerHTML = data.map(c => `
+            <tr><td><strong>${c.full_name}</strong></td><td><code>${c.username}</code></td>
+                <td>${c.total_sales}</td><td><strong>GHS ${c.total_revenue.toFixed(2)}</strong></td>
+                <td>GHS ${c.avg_sale.toFixed(2)}</td></tr>
+        `).join('') || '<tr><td colspan="5" class="text-center text-muted">No data</td></tr>';
+    });
+}
+
+// Load daily report on page load
+loadDailyReport();
+
+// Profit Analytics
+let profitTrendChart = null, categoryPieChart = null, hourlyChartInstance = null;
+
+function loadProfitReport() {
+    const period = document.getElementById('profitPeriod').value;
+    fetch('/api/reports/profit?period=' + period).then(r => r.json()).then(data => {
+        // Trend chart
+        if (profitTrendChart) profitTrendChart.destroy();
+        const ctx1 = document.getElementById('profitTrendChart').getContext('2d');
+        profitTrendChart = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: data.daily.map(d => d.date.slice(5)),
+                datasets: [{
+                    label: 'Revenue (GHS)', data: data.daily.map(d => d.revenue),
+                    borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)',
+                    fill: true, tension: 0.3, borderWidth: 2,
+                }, {
+                    label: 'Items Sold', data: data.daily.map(d => d.items_sold),
+                    borderColor: '#10b981', borderWidth: 2, tension: 0.3,
+                    yAxisID: 'y1',
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { title: { display: true, text: 'Revenue & Sales Trend' } },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Revenue (GHS)' } },
+                    y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Items Sold' }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+
+        // Category pie chart
+        if (categoryPieChart) categoryPieChart.destroy();
+        const ctx2 = document.getElementById('categoryPieChart').getContext('2d');
+        const colors = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+        categoryPieChart = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: data.category_revenue.map(c => c.category),
+                datasets: [{ data: data.category_revenue.map(c => c.revenue), backgroundColor: colors }]
+            },
+            options: { responsive: true, plugins: { title: { display: true, text: 'Revenue by Category' } } }
+        });
+
+        // Top products table
+        const tbody = document.querySelector('#topProductsTable tbody');
+        tbody.innerHTML = data.top_products.map((p, i) => `
+            <tr><td><strong>${i+1}</strong></td><td>${p.product_name}</td>
+                <td><strong>${p.qty}</strong></td><td><strong>GHS ${p.revenue.toFixed(2)}</strong></td></tr>
+        `).join('') || '<tr><td colspan="4" class="text-center text-muted">No data</td></tr>';
+
+        // Hourly chart
+        if (hourlyChartInstance) hourlyChartInstance.destroy();
+        const ctx3 = document.getElementById('hourlyChart').getContext('2d');
+        const hours = data.hourly_pattern;
+        hourlyChartInstance = new Chart(ctx3, {
+            type: 'bar',
+            data: {
+                labels: hours.map(h => h.hour + ':00'),
+                datasets: [{
+                    label: 'Transactions', data: hours.map(h => h.count),
+                    backgroundColor: 'rgba(139,92,246,0.3)', borderColor: '#8b5cf6', borderWidth: 2, borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false }, title: { display: true, text: 'Sales by Hour of Day' } },
+                scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+            }
+        });
+    });
+}
+</script>
+{% endblock %}

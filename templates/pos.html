@@ -1,0 +1,379 @@
+{% extends 'base.html' %}
+{% block title %}Point of Sale - POS System{% endblock %}
+{% block page_title %}Point of Sale{% endblock %}
+{% block page_subtitle %}Process sales transactions{% endblock %}
+
+{% block content %}
+<div class="pos-layout">
+    <!-- Products Panel -->
+    <div class="pos-products">
+        <div class="product-search" style="position: relative;">
+            <span class="search-icon"><i class="fas fa-barcode"></i></span>
+            <input type="text" id="searchInput" placeholder="Scan barcode or search by name / category..." oninput="handleSearchInput(this.value)" onkeydown="handleSearchKey(event)" autofocus>
+            <div id="scannerStatus" style="display:none; position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; color:var(--success); background:#d1fae5; padding:2px 10px; border-radius:20px;">
+                <i class="fas fa-check"></i> Scanned!
+            </div>
+        </div>
+        <div style="margin-bottom:12px; font-size:12px; color:var(--text-light); display:flex; align-items:center; gap:8px;">
+            <i class="fas fa-info-circle"></i> Barcode scanner ready — scan any product barcode to add it to cart instantly
+        </div>
+        </div>
+        <div class="product-grid" id="productGrid">
+            {% for p in products %}
+            <div class="product-card" onclick='addToCart({{ p.product_id }}, "{{ p.product_name }}", {{ p.price }}, {{ p.quantity }})'>
+                <div class="product-emoji">{{ "🥤" if p.category == "Beverages" else "🍞" if p.category == "Bakery" else "🍚" if p.category == "Grains" else "🥛" if p.category == "Dairy" else "🥚" if p.category == "Poultry" else "🏠" if p.category == "Household" else "🥫" if p.category == "Canned" else "🛒" }}</div>
+                <div class="product-name">{{ p.product_name }}</div>
+                <div class="product-price">GHS {{ "%.2f"|format(p.price) }}</div>
+                {% if p.barcode %}
+                <img src="/api/barcode_image/{{ p.barcode }}" alt="{{ p.barcode }}" style="width:100%; max-width:140px; height:auto; margin:4px auto 0; display:block;">
+                {% endif %}
+                <div class="product-stock">Stock: {{ p.quantity }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Cart Panel -->
+    <div class="cart-panel">
+        <div class="cart-header">
+            <h3><i class="fas fa-shopping-cart"></i> Shopping Cart</h3>
+            <button class="btn btn-sm btn-outline" onclick="clearCart()"><i class="fas fa-trash"></i> Clear</button>
+        </div>
+
+        <div class="cart-items" id="cartItems">
+            <div class="cart-empty" id="cartEmpty">
+                <div class="empty-icon">🛒</div>
+                <p>Cart is empty</p>
+                <p style="font-size: 12px;">Click products to add them</p>
+            </div>
+        </div>
+
+        <!-- Customer Selection -->
+        <div style="padding: 12px 20px; border-top: 1px solid var(--border);">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="font-size: 12px;"><i class="fas fa-user"></i> Customer</label>
+                <select id="customerSelect" class="form-control" style="padding: 8px 10px; font-size: 13px;">
+                    {% for c in customers %}
+                    <option value="{{ c.customer_id }}">{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="cart-summary" id="cartSummary">
+            <div class="summary-row">
+                <span>Subtotal</span>
+                <span id="subtotal">GHS 0.00</span>
+            </div>
+            <div class="summary-row">
+                <span>Discount (GHS)</span>
+                <input type="number" id="discountInput" value="0" min="0" step="0.01" style="width:80px; padding:4px 8px; border:1px solid var(--border); border-radius:4px; text-align:right; font-size:13px;" oninput="updateTotals()">
+            </div>
+            <div class="summary-row">
+                <span>Tax (%)</span>
+                <input type="number" id="taxInput" value="0" min="0" max="100" step="0.1" style="width:80px; padding:4px 8px; border:1px solid var(--border); border-radius:4px; text-align:right; font-size:13px;" oninput="updateTotals()">
+            </div>
+            <div class="summary-row">
+                <span>Tax Amount</span>
+                <span id="taxAmount">GHS 0.00</span>
+            </div>
+            <div class="summary-row total">
+                <span>Total</span>
+                <span id="totalAmount">GHS 0.00</span>
+            </div>
+        </div>
+
+        <div class="cart-actions">
+            <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 12px;"><i class="fas fa-tags"></i> Promo Code</label>
+                <div class="d-flex gap-2">
+                    <input type="text" id="promoCode" class="form-control" placeholder="Enter code" style="padding:8px 10px; font-size:13px; text-transform:uppercase;">
+                    <button class="btn btn-sm btn-outline" onclick="applyPromo()"><i class="fas fa-check"></i></button>
+                </div>
+                <div id="promoStatus" style="font-size:11px; margin-top:4px;"></div>
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 12px;"><i class="fas fa-credit-card"></i> Payment Method</label>
+                <select id="paymentMethod" class="form-control" style="padding: 8px 10px; font-size: 13px;">
+                    <option value="Cash">Cash</option>
+                    <option value="Mobile Money">Mobile Money</option>
+                    <option value="Card">Credit/Debit Card</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;" id="amountPaidGroup">
+                <label style="font-size: 12px;"><i class="fas fa-money-bill"></i> Amount Paid</label>
+                <input type="number" id="amountPaid" class="form-control" step="0.01" min="0" placeholder="0.00" style="padding: 8px 10px; font-size: 13px;" oninput="updateChange()">
+            </div>
+            <div class="summary-row" id="changeRow" style="display: none;">
+                <span>Change</span>
+                <span id="changeAmount" style="font-weight:700; color: var(--success);">GHS 0.00</span>
+            </div>
+            <button class="btn btn-success btn-block" onclick="checkout()">
+                <i class="fas fa-check-circle"></i> Complete Sale
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let cart = [];
+
+function addToCart(id, name, price, maxQty) {
+    const existing = cart.find(item => item.product_id === id);
+    if (existing) {
+        if (existing.quantity >= maxQty) {
+            alert('Cannot add more. Only ' + maxQty + ' in stock.');
+            return;
+        }
+        existing.quantity++;
+    } else {
+        cart.push({ product_id: id, name: name, price: price, quantity: 1, maxQty: maxQty });
+    }
+    renderCart();
+}
+
+function removeFromCart(index) {
+    cart.splice(index, 1);
+    renderCart();
+}
+
+function updateQty(index, delta) {
+    const item = cart[index];
+    const newQty = item.quantity + delta;
+    if (newQty <= 0) { removeFromCart(index); return; }
+    if (newQty > item.maxQty) { alert('Max stock: ' + item.maxQty); return; }
+    item.quantity = newQty;
+    renderCart();
+}
+
+function clearCart() {
+    cart = [];
+    renderCart();
+}
+
+function renderCart() {
+    const container = document.getElementById('cartItems');
+    const empty = document.getElementById('cartEmpty');
+
+    if (cart.length === 0) {
+        container.innerHTML = `<div class="cart-empty" id="cartEmpty">
+            <div class="empty-icon">🛒</div>
+            <p>Cart is empty</p>
+            <p style="font-size: 12px;">Click products to add them</p>
+        </div>`;
+        updateTotals();
+        return;
+    }
+
+    let html = '';
+    cart.forEach((item, i) => {
+        html += `
+        <div class="cart-item">
+            <div class="cart-item-info">
+                <div class="cart-item-name">${item.name}</div>
+                <div class="cart-item-price">GHS ${item.price.toFixed(2)}</div>
+            </div>
+            <div class="cart-item-qty">
+                <button onclick="updateQty(${i}, -1)">−</button>
+                <span>${item.quantity}</span>
+                <button onclick="updateQty(${i}, 1)">+</button>
+            </div>
+            <div class="cart-item-total">GHS ${(item.price * item.quantity).toFixed(2)}</div>
+            <button class="cart-item-remove" onclick="removeFromCart(${i})"><i class="fas fa-times"></i></button>
+        </div>`;
+    });
+    container.innerHTML = html;
+    updateTotals();
+}
+
+function updateTotals() {
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    let discount = parseFloat(document.getElementById('discountInput').value) || 0;
+    const taxRate = parseFloat(document.getElementById('taxInput').value) || 0;
+
+    // Apply promo code discount
+    if (activePromo) {
+        if (subtotal >= activePromo.min_purchase) {
+            if (activePromo.discount_type === 'percentage') {
+                discount += subtotal * (activePromo.discount_value / 100);
+            } else {
+                discount += activePromo.discount_value;
+            }
+        }
+    }
+
+    const tax = subtotal * (taxRate / 100);
+    const total = Math.max(0, subtotal - discount + tax);
+
+    document.getElementById('subtotal').textContent = 'GHS ' + subtotal.toFixed(2);
+    document.getElementById('taxAmount').textContent = 'GHS ' + tax.toFixed(2);
+    document.getElementById('totalAmount').textContent = 'GHS ' + total.toFixed(2);
+    updateChange();
+}
+
+function updateChange() {
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+    const taxRate = parseFloat(document.getElementById('taxInput').value) || 0;
+    const tax = subtotal * (taxRate / 100);
+    const total = subtotal - discount + tax;
+    const paid = parseFloat(document.getElementById('amountPaid').value) || 0;
+
+    if (paid > 0) {
+        document.getElementById('changeRow').style.display = 'flex';
+        document.getElementById('changeAmount').textContent = 'GHS ' + Math.max(0, paid - total).toFixed(2);
+    } else {
+        document.getElementById('changeRow').style.display = 'none';
+    }
+}
+
+function searchProducts(query) {
+    fetch('/api/search_product?q=' + encodeURIComponent(query))
+        .then(r => r.json())
+        .then(products => {
+            const grid = document.getElementById('productGrid');
+            if (products.length === 0) {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px; color:var(--text-light);">No products found</div>';
+                return;
+            }
+            const emojis = { Beverages: '🥤', Bakery: '🍞', Grains: '🍚', Dairy: '🥛', Poultry: '🥚', Household: '🏠', Canned: '🥫' };
+            grid.innerHTML = products.map(p => `
+                <div class="product-card" onclick='addToCart(${p.product_id}, "${p.product_name}", ${p.price}, ${p.quantity})'>
+                    <div class="product-emoji">${emojis[p.category] || '🛒'}</div>
+                    <div class="product-name">${p.product_name}</div>
+                    <div class="product-price">GHS ${p.price.toFixed(2)}</div>
+                    ${p.barcode ? `<img src="/api/barcode_image/${p.barcode}" alt="${p.barcode}" style="width:100%;max-width:140px;height:auto;margin:4px auto 0;display:block;">` : ''}
+                    <div class="product-stock">Stock: ${p.quantity}</div>
+                </div>
+            `).join('');
+        });
+}
+
+// ─── Barcode Scanner Support ───
+// Barcode scanners act like fast keyboards — they type characters rapidly
+// and end with Enter. We detect this pattern to distinguish scans from typing.
+
+let scanBuffer = '';
+let scanTimeout = null;
+let lastKeyTime = 0;
+
+function handleSearchKey(e) {
+    // Enter key: try barcode lookup first
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const value = document.getElementById('searchInput').value.trim();
+        if (value) {
+            lookupBarcode(value);
+        }
+    }
+}
+
+function handleSearchInput(value) {
+    // Debounced regular search (for manual typing)
+    clearTimeout(scanTimeout);
+    scanTimeout = setTimeout(() => {
+        if (value.trim()) {
+            searchProducts(value);
+        }
+    }, 400);
+}
+
+function lookupBarcode(barcode) {
+    fetch('/api/barcode_lookup?barcode=' + encodeURIComponent(barcode))
+        .then(r => r.json())
+        .then(data => {
+            if (data.found) {
+                const p = data.product;
+                addToCart(p.product_id, p.product_name, p.price, p.quantity);
+                // Show scan success feedback
+                const status = document.getElementById('scannerStatus');
+                status.style.display = 'inline-block';
+                setTimeout(() => { status.style.display = 'none'; }, 1500);
+                // Clear search input for next scan
+                document.getElementById('searchInput').value = '';
+                // Reset product grid to show all
+                searchProducts('');
+            } else {
+                // Not an exact barcode match, do a regular search
+                searchProducts(barcode);
+            }
+        });
+}
+
+// ─── Promo Code Support ───
+let activePromo = null;
+
+function applyPromo() {
+    const code = document.getElementById('promoCode').value.trim();
+    if (!code) return;
+    fetch('/api/validate_promo?code=' + encodeURIComponent(code))
+        .then(r => r.json())
+        .then(data => {
+            const status = document.getElementById('promoStatus');
+            if (data.valid) {
+                activePromo = data.promo;
+                const desc = data.promo.discount_type === 'percentage'
+                    ? data.promo.discount_value + '% off'
+                    : 'GHS ' + data.promo.discount_value.toFixed(2) + ' off';
+                status.innerHTML = '<span style="color:var(--success);"><i class="fas fa-check-circle"></i> ' + desc + ' applied!</span>';
+                updateTotals();
+            } else {
+                activePromo = null;
+                status.innerHTML = '<span style="color:var(--danger);"><i class="fas fa-times-circle"></i> Invalid or expired code</span>';
+            }
+        });
+}
+
+function checkout() {
+    if (cart.length === 0) { alert('Cart is empty!'); return; }
+
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+    const taxRate = parseFloat(document.getElementById('taxInput').value) || 0;
+    const total = subtotal - discount + (subtotal * taxRate / 100);
+    const paid = parseFloat(document.getElementById('amountPaid').value) || 0;
+    const method = document.getElementById('paymentMethod').value;
+
+    if (method === 'Cash' && paid < total) {
+        alert('Amount paid (GHS ' + paid.toFixed(2) + ') is less than total (GHS ' + total.toFixed(2) + ')');
+        return;
+    }
+
+    const amountPaid = method === 'Cash' ? paid : total;
+
+    const data = {
+        items: cart.map(i => ({ product_id: i.product_id, price: i.price, quantity: i.quantity })),
+        customer_id: document.getElementById('customerSelect').value,
+        payment_method: method,
+        discount: discount,
+        tax_rate: taxRate,
+        amount_paid: amountPaid
+    };
+
+    fetch('/api/process_sale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            alert('Sale completed! Total: GHS ' + result.total.toFixed(2) + (result.change > 0 ? ' | Change: GHS ' + result.change.toFixed(2) : ''));
+            window.open('/receipt/' + result.sale_id, '_blank');
+            cart = [];
+            renderCart();
+            document.getElementById('discountInput').value = 0;
+            document.getElementById('taxInput').value = 0;
+            document.getElementById('amountPaid').value = '';
+        } else {
+            alert('Error: ' + result.message);
+        }
+    })
+    .catch(err => alert('Error processing sale: ' + err));
+}
+</script>
+{% endblock %}

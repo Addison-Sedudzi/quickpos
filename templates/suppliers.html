@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}Suppliers - POS System{% endblock %}
+{% block page_title %}Supplier Management{% endblock %}
+{% block page_subtitle %}Manage your product suppliers{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openModal('addSupplierModal')"><i class="fas fa-plus"></i> Add Supplier</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding:0;">
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Contact Person</th><th>Phone</th><th>Email</th><th>Address</th><th>Products</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for s in suppliers %}
+                <tr>
+                    <td>{{ s.supplier_id }}</td>
+                    <td><strong>{{ s.name }}</strong></td>
+                    <td>{{ s.contact_person or '—' }}</td>
+                    <td>{{ s.phone or '—' }}</td>
+                    <td>{{ s.email or '—' }}</td>
+                    <td>{{ s.address or '—' }}</td>
+                    <td><span class="badge badge-primary">{{ s.product_count }} items</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline" onclick="editSupplier({{ s.supplier_id }}, '{{ s.name }}', '{{ s.contact_person }}', '{{ s.phone }}', '{{ s.email }}', '{{ s.address }}')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center text-muted" style="padding:24px;">No suppliers added yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Supplier Modal -->
+<div class="modal-overlay" id="addSupplierModal">
+    <div class="modal">
+        <div class="modal-header"><h3>Add Supplier</h3><button class="modal-close" onclick="closeModal('addSupplierModal')">&times;</button></div>
+        <form method="POST" action="{{ url_for('add_supplier') }}">
+            <div class="modal-body">
+                <div class="form-group"><label>Company Name *</label><input type="text" name="name" class="form-control" required></div>
+                <div class="grid-2">
+                    <div class="form-group"><label>Contact Person</label><input type="text" name="contact_person" class="form-control"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" name="phone" class="form-control"></div>
+                </div>
+                <div class="form-group"><label>Email</label><input type="email" name="email" class="form-control"></div>
+                <div class="form-group"><label>Address</label><textarea name="address" class="form-control" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addSupplierModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Supplier Modal -->
+<div class="modal-overlay" id="editSupplierModal">
+    <div class="modal">
+        <div class="modal-header"><h3>Edit Supplier</h3><button class="modal-close" onclick="closeModal('editSupplierModal')">&times;</button></div>
+        <form method="POST" id="editSupplierForm">
+            <div class="modal-body">
+                <div class="form-group"><label>Company Name *</label><input type="text" name="name" id="es_name" class="form-control" required></div>
+                <div class="grid-2">
+                    <div class="form-group"><label>Contact Person</label><input type="text" name="contact_person" id="es_contact" class="form-control"></div>
+                    <div class="form-group"><label>Phone</label><input type="text" name="phone" id="es_phone" class="form-control"></div>
+                </div>
+                <div class="form-group"><label>Email</label><input type="email" name="email" id="es_email" class="form-control"></div>
+                <div class="form-group"><label>Address</label><textarea name="address" id="es_address" class="form-control" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editSupplierModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function editSupplier(id, name, contact, phone, email, address) {
+    document.getElementById('editSupplierForm').action = '/suppliers/edit/' + id;
+    document.getElementById('es_name').value = name;
+    document.getElementById('es_contact').value = contact;
+    document.getElementById('es_phone').value = phone;
+    document.getElementById('es_email').value = email;
+    document.getElementById('es_address').value = address;
+    openModal('editSupplierModal');
+}
+document.querySelectorAll('.modal-overlay').forEach(el => { el.addEventListener('click', e => { if(e.target===el) el.classList.remove('active'); }); });
+</script>
+{% endblock %}

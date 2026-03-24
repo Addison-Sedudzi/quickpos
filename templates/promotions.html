@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Promotions - POS System{% endblock %}
+{% block page_title %}Promotions & Discounts{% endblock %}
+{% block page_subtitle %}Manage discount codes and promotional offers{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openModal('addPromoModal')"><i class="fas fa-plus"></i> Create Promotion</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding:0;">
+        <table>
+            <thead><tr><th>Code</th><th>Description</th><th>Type</th><th>Value</th><th>Min Purchase</th><th>Valid Period</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for p in promotions %}
+                <tr>
+                    <td><code style="font-size:14px; font-weight:700; color:var(--primary);">{{ p.code }}</code></td>
+                    <td>{{ p.description or '—' }}</td>
+                    <td><span class="badge badge-info">{{ p.discount_type }}</span></td>
+                    <td><strong>{% if p.discount_type == 'percentage' %}{{ p.discount_value }}%{% else %}GHS {{ "%.2f"|format(p.discount_value) }}{% endif %}</strong></td>
+                    <td>GHS {{ "%.2f"|format(p.min_purchase) }}</td>
+                    <td style="font-size:12px;">{{ p.start_date }} — {{ p.end_date }}</td>
+                    <td>
+                        {% if p.is_active %}
+                        <span class="badge badge-success">Active</span>
+                        {% else %}
+                        <span class="badge badge-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('toggle_promotion', promo_id=p.promo_id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm {% if p.is_active %}btn-warning{% else %}btn-success{% endif %}">
+                                <i class="fas fa-{% if p.is_active %}pause{% else %}play{% endif %}"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center text-muted" style="padding:24px;">No promotions created yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Promotion Modal -->
+<div class="modal-overlay" id="addPromoModal">
+    <div class="modal">
+        <div class="modal-header"><h3>Create Promotion</h3><button class="modal-close" onclick="closeModal('addPromoModal')">&times;</button></div>
+        <form method="POST" action="{{ url_for('add_promotion') }}">
+            <div class="modal-body">
+                <div class="grid-2">
+                    <div class="form-group"><label>Promo Code *</label><input type="text" name="code" class="form-control" placeholder="e.g. SAVE20" required style="text-transform:uppercase;"></div>
+                    <div class="form-group"><label>Discount Type *</label>
+                        <select name="discount_type" class="form-control" required>
+                            <option value="percentage">Percentage (%)</option>
+                            <option value="fixed">Fixed Amount (GHS)</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Discount Value *</label><input type="number" name="discount_value" class="form-control" step="0.01" min="0" required></div>
+                    <div class="form-group"><label>Min Purchase (GHS)</label><input type="number" name="min_purchase" class="form-control" value="0" step="0.01" min="0"></div>
+                    <div class="form-group"><label>Start Date *</label><input type="date" name="start_date" class="form-control" required></div>
+                    <div class="form-group"><label>End Date *</label><input type="date" name="end_date" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Description</label><input type="text" name="description" class="form-control" placeholder="Brief description of the offer"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addPromoModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-tags"></i> Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+document.querySelectorAll('.modal-overlay').forEach(el => { el.addEventListener('click', e => { if(e.target===el) el.classList.remove('active'); }); });
+</script>
+{% endblock %}

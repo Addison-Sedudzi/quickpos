@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% block title %}Users - POS System{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Manage system users and roles{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openModal('addUserModal')"><i class="fas fa-plus"></i> Add User</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Full Name</th><th>Username</th><th>Role</th><th>Email</th><th>Status</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td>{{ u.user_id }}</td>
+                        <td><strong>{{ u.full_name }}</strong></td>
+                        <td><code>{{ u.username }}</code></td>
+                        <td>
+                            <span class="badge {% if u.role == 'Admin' %}badge-danger{% elif u.role == 'Manager' %}badge-warning{% else %}badge-info{% endif %}">
+                                {{ u.role }}
+                            </span>
+                        </td>
+                        <td>{{ u.email or '—' }}</td>
+                        <td>
+                            {% if u.is_active %}
+                            <span class="badge badge-success">Active</span>
+                            {% else %}
+                            <span class="badge badge-danger">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline" onclick="editUser({{ u.user_id }}, '{{ u.full_name }}', '{{ u.role }}', '{{ u.email }}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('toggle_user', user_id=u.user_id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-sm {% if u.is_active %}btn-warning{% else %}btn-success{% endif %}">
+                                    <i class="fas fa-{% if u.is_active %}ban{% else %}check{% endif %}"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-overlay" id="addUserModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add New User</h3>
+            <button class="modal-close" onclick="closeModal('addUserModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('add_user') }}">
+            <div class="modal-body">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Full Name *</label>
+                        <input type="text" name="full_name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Username *</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password *</label>
+                        <input type="password" name="password" class="form-control" required minlength="4">
+                    </div>
+                    <div class="form-group">
+                        <label>Role *</label>
+                        <select name="role" class="form-control" required>
+                            <option value="Cashier">Cashier</option>
+                            <option value="Manager">Manager</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addUserModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="editUserModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Edit User</h3>
+            <button class="modal-close" onclick="closeModal('editUserModal')">&times;</button>
+        </div>
+        <form method="POST" id="editUserForm">
+            <div class="modal-body">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Full Name *</label>
+                        <input type="text" name="full_name" id="edit_user_name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Role *</label>
+                        <select name="role" id="edit_user_role" class="form-control" required>
+                            <option value="Cashier">Cashier</option>
+                            <option value="Manager">Manager</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" id="edit_user_email" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>New Password (leave blank to keep current)</label>
+                    <input type="password" name="password" class="form-control" minlength="4">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editUserModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update User</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function editUser(id, name, role, email) {
+    document.getElementById('editUserForm').action = '/users/edit/' + id;
+    document.getElementById('edit_user_name').value = name;
+    document.getElementById('edit_user_role').value = role;
+    document.getElementById('edit_user_email').value = email;
+    openModal('editUserModal');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+{% endblock %}

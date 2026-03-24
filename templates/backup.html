@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}Backup - POS System{% endblock %}
+{% block page_title %}Backup & Data Recovery{% endblock %}
+{% block page_subtitle %}Database backup, restore, and transaction logs{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+    <!-- Backup Actions -->
+    <div class="card">
+        <div class="card-header"><h3><i class="fas fa-database"></i> Database Backup</h3></div>
+        <div class="card-body">
+            <p style="margin-bottom: 16px; color: var(--text-light); font-size: 14px;">
+                Create a backup of the entire database. Backups are stored in the <code>database/backups</code> folder.
+            </p>
+            <form method="POST" action="{{ url_for('create_backup') }}">
+                <button type="submit" class="btn btn-primary btn-block">
+                    <i class="fas fa-download"></i> Create Backup Now
+                </button>
+            </form>
+
+            <hr style="margin: 24px 0; border-color: var(--border);">
+
+            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Available Backups</h4>
+            <div id="backupList">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Restore -->
+    <div class="card">
+        <div class="card-header"><h3><i class="fas fa-clock-rotate-left"></i> Restore Database</h3></div>
+        <div class="card-body">
+            <div class="alert alert-warning" style="margin-bottom: 16px;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Warning:</strong> Restoring will replace all current data with the backup data. This cannot be undone.
+            </div>
+            <form method="POST" action="{{ url_for('restore_backup') }}" onsubmit="return confirm('Are you sure? This will overwrite all current data!')">
+                <div class="form-group">
+                    <label>Select Backup File</label>
+                    <select name="backup_file" id="restoreSelect" class="form-control" required>
+                        <option value="">-- Select a backup --</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-warning btn-block">
+                    <i class="fas fa-upload"></i> Restore Database
+                </button>
+            </form>
+
+            <hr style="margin: 24px 0; border-color: var(--border);">
+
+            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Data Export</h4>
+            <p style="font-size: 13px; color: var(--text-light); margin-bottom: 12px;">
+                Backup files can be found in the <code>database/backups/</code> directory. You can copy them to external storage for safekeeping.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Transaction Logs -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3><i class="fas fa-list-check"></i> Transaction Logs</h3>
+        <span class="badge badge-info">Last 100 entries</span>
+    </div>
+    <div class="card-body" style="padding: 0; max-height: 500px; overflow-y: auto;">
+        <table>
+            <thead>
+                <tr><th>ID</th><th>User</th><th>Action</th><th>Details</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.log_id }}</td>
+                    <td>{{ log.full_name or 'System' }}</td>
+                    <td>
+                        <span class="badge {% if 'LOGIN' in log.action %}badge-info{% elif 'SALE' in log.action %}badge-success{% elif 'DELETE' in log.action %}badge-danger{% else %}badge-primary{% endif %}">
+                            {{ log.action }}
+                        </span>
+                    </td>
+                    <td style="font-size:12px; max-width:300px; overflow:hidden; text-overflow:ellipsis;">{{ log.details or '—' }}</td>
+                    <td>{{ log.created_at[:19] }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center text-muted" style="padding:24px;">No logs yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadBackups() {
+    fetch('/api/backups').then(r => r.json()).then(files => {
+        const list = document.getElementById('backupList');
+        const select = document.getElementById('restoreSelect');
+
+        if (files.length === 0) {
+            list.innerHTML = '<p class="text-muted" style="font-size:13px;">No backups yet. Create one above.</p>';
+            return;
+        }
+
+        list.innerHTML = files.map(f => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;">
+                <div>
+                    <strong>${f.filename}</strong><br>
+                    <span class="text-muted">${f.modified} · ${(f.size / 1024).toFixed(1)} KB</span>
+                </div>
+            </div>
+        `).join('');
+
+        select.innerHTML = '<option value="">-- Select a backup --</option>' +
+            files.map(f => `<option value="${f.filename}">${f.filename} (${f.modified})</option>`).join('');
+    });
+}
+
+loadBackups();
+</script>
+{% endblock %}

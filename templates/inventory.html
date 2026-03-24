@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% block title %}Inventory - POS System{% endblock %}
+{% block page_title %}Inventory Management{% endblock %}
+{% block page_subtitle %}Track and manage stock levels{% endblock %}
+
+{% block content %}
+<!-- Low Stock Alerts -->
+{% if low_stock %}
+<div class="card mb-4" style="border-left: 4px solid var(--danger);">
+    <div class="card-header">
+        <h3><i class="fas fa-exclamation-triangle text-danger"></i> Low Stock Alerts ({{ low_stock|length }})</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>Product</th><th>Category</th><th>Current Stock</th><th>Threshold</th><th>Status</th>
+                    {% if session.role in ['Admin', 'Manager'] %}<th>Action</th>{% endif %}</tr>
+                </thead>
+                <tbody>
+                    {% for p in low_stock %}
+                    <tr>
+                        <td><strong>{{ p.product_name }}</strong></td>
+                        <td>{{ p.category }}</td>
+                        <td><strong class="{% if p.quantity == 0 %}text-danger{% else %}text-warning{% endif %}">{{ p.quantity }}</strong></td>
+                        <td>{{ p.low_stock_threshold }}</td>
+                        <td>
+                            {% if p.quantity == 0 %}
+                            <span class="badge badge-danger">Out of Stock</span>
+                            {% else %}
+                            <span class="badge badge-warning">Low Stock</span>
+                            {% endif %}
+                        </td>
+                        {% if session.role in ['Admin', 'Manager'] %}
+                        <td>
+                            <button class="btn btn-sm btn-success" onclick="openRestock({{ p.product_id }}, '{{ p.product_name }}', {{ p.quantity }})">
+                                <i class="fas fa-plus"></i> Restock
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid-2">
+    <!-- All Products Stock -->
+    <div class="card">
+        <div class="card-header"><h3><i class="fas fa-boxes-stacked"></i> Stock Overview</h3></div>
+        <div class="card-body" style="padding: 0; max-height: 500px; overflow-y: auto;">
+            <table>
+                <thead>
+                    <tr><th>Product</th><th>Stock</th><th>Status</th>
+                    {% if session.role in ['Admin', 'Manager'] %}<th>Adjust</th>{% endif %}</tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                    <tr>
+                        <td>{{ p.product_name }}</td>
+                        <td><strong>{{ p.quantity }}</strong></td>
+                        <td>
+                            {% if p.quantity == 0 %}
+                            <span class="badge badge-danger">Out</span>
+                            {% elif p.quantity <= p.low_stock_threshold %}
+                            <span class="badge badge-warning">Low</span>
+                            {% else %}
+                            <span class="badge badge-success">OK</span>
+                            {% endif %}
+                        </td>
+                        {% if session.role in ['Admin', 'Manager'] %}
+                        <td>
+                            <button class="btn btn-sm btn-outline" onclick="openRestock({{ p.product_id }}, '{{ p.product_name }}', {{ p.quantity }})">
+                                <i class="fas fa-sliders-h"></i>
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Inventory Log -->
+    <div class="card">
+        <div class="card-header"><h3><i class="fas fa-history"></i> Recent Activity</h3></div>
+        <div class="card-body" style="padding: 0; max-height: 500px; overflow-y: auto;">
+            <table>
+                <thead>
+                    <tr><th>Product</th><th>Type</th><th>Change</th><th>By</th><th>Date</th></tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.product_name }}</td>
+                        <td>
+                            <span class="badge {% if log.change_type == 'RESTOCK' %}badge-success{% elif log.change_type == 'SALE' %}badge-info{% else %}badge-warning{% endif %}">
+                                {{ log.change_type }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong class="{% if log.quantity_change > 0 %}text-success{% else %}text-danger{% endif %}">
+                                {{ "+" if log.quantity_change > 0 }}{{ log.quantity_change }}
+                            </strong>
+                            <span class="text-muted">({{ log.previous_quantity }} → {{ log.new_quantity }})</span>
+                        </td>
+                        <td>{{ log.full_name or '—' }}</td>
+                        <td>{{ log.created_at[:16] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted" style="padding:24px;">No activity yet</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Adjust Stock Modal -->
+<div class="modal-overlay" id="restockModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Adjust Stock</h3>
+            <button class="modal-close" onclick="closeModal('restockModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('adjust_inventory') }}">
+            <div class="modal-body">
+                <input type="hidden" name="product_id" id="restock_product_id">
+                <p style="margin-bottom:16px;">Product: <strong id="restock_product_name"></strong> (Current: <span id="restock_current"></span>)</p>
+                <div class="form-group">
+                    <label>Quantity Change (positive to add, negative to subtract)</label>
+                    <input type="number" name="adjustment" class="form-control" required placeholder="e.g. 50 or -5">
+                </div>
+                <div class="form-group">
+                    <label>Reason</label>
+                    <select name="reason" class="form-control">
+                        <option value="Supplier restocking">Supplier Restocking</option>
+                        <option value="Manual adjustment">Manual Adjustment</option>
+                        <option value="Damaged goods">Damaged Goods</option>
+                        <option value="Returned items">Returned Items</option>
+                        <option value="Inventory count correction">Inventory Count Correction</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('restockModal')">Cancel</button>
+                <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Apply Adjustment</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function openRestock(id, name, current) {
+    document.getElementById('restock_product_id').value = id;
+    document.getElementById('restock_product_name').textContent = name;
+    document.getElementById('restock_current').textContent = current;
+    openModal('restockModal');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+{% endblock %}

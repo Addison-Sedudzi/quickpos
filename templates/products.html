@@ -1,0 +1,220 @@
+{% extends 'base.html' %}
+{% block title %}Products - POS System{% endblock %}
+{% block page_title %}Product Management{% endblock %}
+{% block page_subtitle %}Manage your product catalog{% endblock %}
+
+{% block header_actions %}
+{% if session.role in ['Admin', 'Manager'] %}
+<button class="btn btn-primary" onclick="openModal('addProductModal')"><i class="fas fa-plus"></i> Add Product</button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<!-- Search & Filter -->
+<div class="card mb-4">
+    <div class="card-body d-flex gap-3 align-center">
+        <input type="text" class="form-control" id="productSearch" placeholder="Search products..." oninput="filterProducts()" style="max-width: 300px;">
+        <select class="form-control" id="categoryFilter" onchange="filterProducts()" style="max-width: 200px;">
+            <option value="">All Categories</option>
+            {% for c in categories %}
+            <option value="{{ c.category }}">{{ c.category }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<!-- Products Table -->
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table id="productsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Product Name</th><th>Category</th><th>Price (GHS)</th>
+                        <th>Stock</th><th>Barcode</th><th>Supplier</th><th>Status</th>
+                        {% if session.role in ['Admin', 'Manager'] %}<th>Actions</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                    <tr data-name="{{ p.product_name|lower }}" data-category="{{ p.category }}">
+                        <td>{{ p.product_id }}</td>
+                        <td><strong>{{ p.product_name }}</strong></td>
+                        <td><span class="badge badge-primary">{{ p.category }}</span></td>
+                        <td>{{ "%.2f"|format(p.price) }}</td>
+                        <td>{{ p.quantity }}</td>
+                        <td>
+                            {% if p.barcode %}
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <code>{{ p.barcode }}</code>
+                                <img src="/api/barcode_image/{{ p.barcode }}" alt="{{ p.barcode }}" style="height:30px; width:auto;">
+                            </div>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                        <td>{{ p.supplier or '—' }}</td>
+                        <td>
+                            {% if p.quantity == 0 %}
+                            <span class="badge badge-danger">Out of Stock</span>
+                            {% elif p.quantity <= p.low_stock_threshold %}
+                            <span class="badge badge-warning">Low Stock</span>
+                            {% else %}
+                            <span class="badge badge-success">In Stock</span>
+                            {% endif %}
+                        </td>
+                        {% if session.role in ['Admin', 'Manager'] %}
+                        <td class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline" onclick="editProduct({{ p.product_id }}, '{{ p.product_name }}', '{{ p.category }}', {{ p.price }}, {{ p.quantity }}, '{{ p.barcode }}', '{{ p.supplier }}', {{ p.low_stock_threshold }})">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            {% if session.role == 'Admin' %}
+                            <form method="POST" action="{{ url_for('delete_product', product_id=p.product_id) }}" style="display:inline;" onsubmit="return confirm('Delete this product?')">
+                                <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal-overlay" id="addProductModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add New Product</h3>
+            <button class="modal-close" onclick="closeModal('addProductModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('add_product') }}">
+            <div class="modal-body">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Product Name *</label>
+                        <input type="text" name="product_name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Category *</label>
+                        <input type="text" name="category" class="form-control" required list="categoryList">
+                        <datalist id="categoryList">
+                            {% for c in categories %}<option value="{{ c.category }}">{% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Price (GHS) *</label>
+                        <input type="number" name="price" class="form-control" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity *</label>
+                        <input type="number" name="quantity" class="form-control" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Barcode</label>
+                        <input type="text" name="barcode" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier</label>
+                        <input type="text" name="supplier" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Low Stock Threshold</label>
+                        <input type="number" name="low_stock_threshold" class="form-control" value="10" min="0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addProductModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add Product</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Product Modal -->
+<div class="modal-overlay" id="editProductModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Edit Product</h3>
+            <button class="modal-close" onclick="closeModal('editProductModal')">&times;</button>
+        </div>
+        <form method="POST" id="editProductForm">
+            <div class="modal-body">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Product Name *</label>
+                        <input type="text" name="product_name" id="edit_product_name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Category *</label>
+                        <input type="text" name="category" id="edit_category" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Price (GHS) *</label>
+                        <input type="number" name="price" id="edit_price" class="form-control" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity *</label>
+                        <input type="number" name="quantity" id="edit_quantity" class="form-control" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Barcode</label>
+                        <input type="text" name="barcode" id="edit_barcode" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier</label>
+                        <input type="text" name="supplier" id="edit_supplier" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Low Stock Threshold</label>
+                        <input type="number" name="low_stock_threshold" id="edit_threshold" class="form-control" min="0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editProductModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Product</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function editProduct(id, name, category, price, qty, barcode, supplier, threshold) {
+    document.getElementById('editProductForm').action = '/products/edit/' + id;
+    document.getElementById('edit_product_name').value = name;
+    document.getElementById('edit_category').value = category;
+    document.getElementById('edit_price').value = price;
+    document.getElementById('edit_quantity').value = qty;
+    document.getElementById('edit_barcode').value = barcode;
+    document.getElementById('edit_supplier').value = supplier;
+    document.getElementById('edit_threshold').value = threshold;
+    openModal('editProductModal');
+}
+
+function filterProducts() {
+    const search = document.getElementById('productSearch').value.toLowerCase();
+    const category = document.getElementById('categoryFilter').value;
+    document.querySelectorAll('#productsTable tbody tr').forEach(row => {
+        const name = row.dataset.name;
+        const cat = row.dataset.category;
+        const matchSearch = name.includes(search);
+        const matchCat = !category || cat === category;
+        row.style.display = (matchSearch && matchCat) ? '' : 'none';
+    });
+}
+
+// Close modal on outside click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+{% endblock %}

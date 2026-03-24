@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}Returns - POS System{% endblock %}
+{% block page_title %}Returns & Refunds{% endblock %}
+{% block page_subtitle %}Process returns and view refund history{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openModal('refundModal')"><i class="fas fa-rotate-left"></i> Process Refund</button>
+{% endblock %}
+
+{% block content %}
+<!-- Refund History -->
+<div class="card">
+    <div class="card-header"><h3><i class="fas fa-history"></i> Refund History</h3></div>
+    <div class="card-body" style="padding:0;">
+        <table>
+            <thead><tr><th>Refund ID</th><th>Sale #</th><th>Amount</th><th>Reason</th><th>Processed By</th><th>Date</th></tr></thead>
+            <tbody>
+                {% for r in refunds %}
+                <tr>
+                    <td><strong>#{{ r.refund_id }}</strong></td>
+                    <td><a href="{{ url_for('receipt', sale_id=r.sale_id) }}">#{{ r.sale_id }}</a></td>
+                    <td class="text-danger"><strong>GHS {{ "%.2f"|format(r.refund_amount) }}</strong></td>
+                    <td>{{ r.reason or '—' }}</td>
+                    <td>{{ r.processed_by }}</td>
+                    <td>{{ r.created_at[:16] }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted" style="padding:24px;">No refunds processed yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Process Refund Modal -->
+<div class="modal-overlay" id="refundModal">
+    <div class="modal" style="max-width:640px;">
+        <div class="modal-header">
+            <h3>Process Refund</h3>
+            <button class="modal-close" onclick="closeModal('refundModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Sale # (Receipt Number)</label>
+                <div class="d-flex gap-2">
+                    <input type="number" id="refundSaleId" class="form-control" placeholder="Enter sale number">
+                    <button class="btn btn-primary" onclick="lookupSale()"><i class="fas fa-search"></i> Look Up</button>
+                </div>
+            </div>
+            <div id="saleDetails" style="display:none;">
+                <div class="card mb-4">
+                    <div class="card-body" style="padding:12px;">
+                        <p><strong>Sale #<span id="saleIdDisplay"></span></strong> — <span id="saleDateDisplay"></span></p>
+                        <p>Cashier: <span id="saleCashierDisplay"></span> | Customer: <span id="saleCustomerDisplay"></span></p>
+                        <p>Total: <strong>GHS <span id="saleTotalDisplay"></span></strong></p>
+                    </div>
+                </div>
+                <h4 style="font-size:14px; margin-bottom:8px;">Items to Refund:</h4>
+                <div id="refundItemsList"></div>
+                <div class="form-group mt-4">
+                    <label>Reason for Return</label>
+                    <textarea id="refundReason" class="form-control" rows="2" placeholder="Describe the reason..."></textarea>
+                </div>
+                <button class="btn btn-danger btn-block mt-2" onclick="submitRefund()">
+                    <i class="fas fa-rotate-left"></i> Process Refund
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let saleItems = [];
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function lookupSale() {
+    const saleId = document.getElementById('refundSaleId').value;
+    if (!saleId) return;
+    fetch('/api/sale_details/' + saleId).then(r => r.json()).then(data => {
+        if (!data.found) { alert('Sale not found'); return; }
+        document.getElementById('saleDetails').style.display = 'block';
+        document.getElementById('saleIdDisplay').textContent = data.sale.sale_id;
+        document.getElementById('saleDateDisplay').textContent = data.sale.date.slice(0,16);
+        document.getElementById('saleCashierDisplay').textContent = data.sale.cashier;
+        document.getElementById('saleCustomerDisplay').textContent = data.sale.customer_name;
+        document.getElementById('saleTotalDisplay').textContent = data.sale.total_amount.toFixed(2);
+        saleItems = data.items;
+        document.getElementById('refundItemsList').innerHTML = data.items.map(i => `
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);">
+                <input type="checkbox" class="refund-check" data-id="${i.sale_item_id}" data-max="${i.quantity}" checked>
+                <span style="flex:1;font-size:13px;"><strong>${i.product_name}</strong> × ${i.quantity} @ GHS ${i.price.toFixed(2)}</span>
+                <input type="number" class="form-control refund-qty" data-id="${i.sale_item_id}" value="${i.quantity}" min="1" max="${i.quantity}" style="width:60px;padding:4px 8px;font-size:13px;">
+                <span style="font-weight:700;">GHS ${i.total.toFixed(2)}</span>
+            </div>
+        `).join('');
+    });
+}
+
+function submitRefund() {
+    const saleId = document.getElementById('refundSaleId').value;
+    const reason = document.getElementById('refundReason').value;
+    const items = [];
+    document.querySelectorAll('.refund-check:checked').forEach(cb => {
+        const id = cb.dataset.id;
+        const qty = parseInt(document.querySelector(`.refund-qty[data-id="${id}"]`).value);
+        items.push({ sale_item_id: parseInt(id), quantity: qty });
+    });
+    if (items.length === 0) { alert('Select items to refund'); return; }
+    if (!confirm('Process this refund? Stock will be restored.')) return;
+
+    fetch('/api/process_refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sale_id: parseInt(saleId), reason, items })
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            alert('Refund processed! Amount: GHS ' + data.refund_total.toFixed(2));
+            location.reload();
+        } else { alert('Error: ' + data.message); }
+    });
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+{% endblock %}

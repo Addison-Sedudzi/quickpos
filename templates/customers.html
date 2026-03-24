@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block title %}Customers - POS System{% endblock %}
+{% block page_title %}Customer Management{% endblock %}
+{% block page_subtitle %}Manage customer records and loyalty{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openModal('addCustomerModal')"><i class="fas fa-plus"></i> Add Customer</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Loyalty Points</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for c in customers %}
+                    <tr>
+                        <td>{{ c.customer_id }}</td>
+                        <td><strong>{{ c.name }}</strong></td>
+                        <td>{{ c.phone or '—' }}</td>
+                        <td>{{ c.email or '—' }}</td>
+                        <td>{{ c.address or '—' }}</td>
+                        <td><span class="badge badge-success">{{ c.loyalty_points }} pts</span></td>
+                        <td class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline" onclick="editCustomer({{ c.customer_id }}, '{{ c.name }}', '{{ c.phone }}', '{{ c.email }}', '{{ c.address }}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline" onclick="viewHistory({{ c.customer_id }})">
+                                <i class="fas fa-history"></i>
+                            </button>
+                            {% if session.role in ['Admin', 'Manager'] %}
+                            <form method="POST" action="{{ url_for('delete_customer', customer_id=c.customer_id) }}" style="display:inline;" onsubmit="return confirm('Delete this customer?')">
+                                <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Customer Modal -->
+<div class="modal-overlay" id="addCustomerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add New Customer</h3>
+            <button class="modal-close" onclick="closeModal('addCustomerModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('add_customer') }}">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <textarea name="address" class="form-control" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addCustomerModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add Customer</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Customer Modal -->
+<div class="modal-overlay" id="editCustomerModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Edit Customer</h3>
+            <button class="modal-close" onclick="closeModal('editCustomerModal')">&times;</button>
+        </div>
+        <form method="POST" id="editCustomerForm">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" name="name" id="edit_cust_name" class="form-control" required>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Phone</label>
+                        <input type="text" name="phone" id="edit_cust_phone" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" id="edit_cust_email" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <textarea name="address" id="edit_cust_address" class="form-control" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editCustomerModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Purchase History Modal -->
+<div class="modal-overlay" id="historyModal">
+    <div class="modal" style="max-width: 640px;">
+        <div class="modal-header">
+            <h3>Purchase History — <span id="historyName"></span></h3>
+            <button class="modal-close" onclick="closeModal('historyModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="historyContent">Loading...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function editCustomer(id, name, phone, email, address) {
+    document.getElementById('editCustomerForm').action = '/customers/edit/' + id;
+    document.getElementById('edit_cust_name').value = name;
+    document.getElementById('edit_cust_phone').value = phone;
+    document.getElementById('edit_cust_email').value = email;
+    document.getElementById('edit_cust_address').value = address;
+    openModal('editCustomerModal');
+}
+
+function viewHistory(id) {
+    document.getElementById('historyContent').innerHTML = 'Loading...';
+    openModal('historyModal');
+    fetch('/customers/' + id + '/history')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('historyName').textContent = data.customer ? data.customer.name : '';
+            if (!data.purchases || data.purchases.length === 0) {
+                document.getElementById('historyContent').innerHTML = '<p class="text-muted text-center">No purchases yet</p>';
+                return;
+            }
+            let html = '<table><thead><tr><th>Sale #</th><th>Date</th><th>Total</th><th>Payment</th></tr></thead><tbody>';
+            data.purchases.forEach(p => {
+                html += `<tr><td>#${p.sale_id}</td><td>${p.date.slice(0,16)}</td><td><strong>GHS ${p.total_amount.toFixed(2)}</strong></td><td>${p.payment_method}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('historyContent').innerHTML = html;
+        });
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.remove('active'); });
+});
+</script>
+{% endblock %}
