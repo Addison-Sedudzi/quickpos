@@ -15,7 +15,6 @@ from functools import wraps
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'quickpos-default-secret-key-change-in-production')
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
-print(f"DEBUG: DATABASE_URL is {'SET' if DATABASE_URL else 'EMPTY'}", flush=True)
 
 
 # ─── PostgreSQL Row / Cursor / Connection Wrappers ───
