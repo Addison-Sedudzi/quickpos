@@ -633,7 +633,7 @@ def process_sale():
     customer_id = data.get('customer_id') or None  # convert "" / 0 / None to None
     if customer_id is not None:
         customer_id = int(customer_id)
-    customer_name = data.get('customer_name', '').strip() or None
+    customer_name = data.get('customer_name', '').strip().title() or None
     payment_method = data.get('payment_method', 'Cash')
     discount = float(data.get('discount', 0))
     tax_rate = float(data.get('tax_rate', 0))
