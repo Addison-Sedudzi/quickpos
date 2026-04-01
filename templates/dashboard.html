@@ -100,7 +100,7 @@
                     {% for s in recent_sales %}
                     <tr>
                         <td><strong>#{{ s.sale_id }}</strong></td>
-                        <td>{{ s.date[:16] }}</td>
+                        <td>{{ s.date.strftime('%Y-%m-%d %H:%M') if s.date else '' }}</td>
                         <td>{{ s.cashier }}</td>
                         <td>{{ s.customer_name }}</td>
                         <td><span class="badge badge-info">{{ s.payment_method }}</span></td>
