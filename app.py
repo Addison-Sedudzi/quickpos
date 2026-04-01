@@ -446,7 +446,7 @@ def dashboard():
     # Recent sales
     recent_sales = conn.execute('''
         SELECT s.sale_id, s.date, s.total_amount, s.payment_method, u.full_name as cashier,
-               COALESCE(c.name, 'Walk-in') as customer_name
+               COALESCE(c.name, s.customer_name, 'Walk-in') as customer_name
         FROM sales s
         JOIN users u ON s.user_id = u.user_id
         LEFT JOIN customers c ON s.customer_id = c.customer_id
@@ -1003,7 +1003,7 @@ def daily_report():
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     conn = get_db()
     sales = conn.execute('''
-        SELECT s.*, u.full_name as cashier, COALESCE(c.name, 'Walk-in') as customer_name
+        SELECT s.*, u.full_name as cashier, COALESCE(c.name, s.customer_name, 'Walk-in') as customer_name
         FROM sales s
         JOIN users u ON s.user_id = u.user_id
         LEFT JOIN customers c ON s.customer_id = c.customer_id
@@ -1181,7 +1181,7 @@ def returns():
 def sale_details(sale_id):
     conn = get_db()
     sale = conn.execute('''
-        SELECT s.*, u.full_name as cashier, COALESCE(c.name, 'Walk-in') as customer_name
+        SELECT s.*, u.full_name as cashier, COALESCE(c.name, s.customer_name, 'Walk-in') as customer_name
         FROM sales s JOIN users u ON s.user_id = u.user_id
         LEFT JOIN customers c ON s.customer_id = c.customer_id
         WHERE s.sale_id = %s
@@ -1370,7 +1370,7 @@ def export_csv(data_type):
     elif data_type == 'sales':
         writer.writerow(['Sale ID', 'Date', 'Cashier', 'Customer', 'Subtotal', 'Discount', 'Tax', 'Total', 'Payment Method'])
         rows = conn.execute('''
-            SELECT s.sale_id, s.date, u.full_name, COALESCE(c.name,'Walk-in'),
+            SELECT s.sale_id, s.date, u.full_name, COALESCE(c.name, s.customer_name, 'Walk-in'),
                    s.subtotal, s.discount, s.tax, s.total_amount, s.payment_method
             FROM sales s JOIN users u ON s.user_id = u.user_id
             LEFT JOIN customers c ON s.customer_id = c.customer_id ORDER BY s.date DESC
