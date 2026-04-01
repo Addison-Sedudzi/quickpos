@@ -368,6 +368,12 @@ def init_db():
             ]
         )
 
+    # Add customer_name column to sales if it doesn't exist yet
+    try:
+        cursor.execute("ALTER TABLE sales ADD COLUMN customer_name TEXT")
+    except Exception:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
 
@@ -591,6 +597,7 @@ def process_sale():
     customer_id = data.get('customer_id') or None  # convert "" / 0 / None to None
     if customer_id is not None:
         customer_id = int(customer_id)
+    customer_name = data.get('customer_name', '').strip() or None
     payment_method = data.get('payment_method', 'Cash')
     discount = float(data.get('discount', 0))
     tax_rate = float(data.get('tax_rate', 0))
@@ -615,8 +622,8 @@ def process_sale():
 
         # Create sale record — use RETURNING to get the new sale_id
         row = conn.execute(
-            "INSERT INTO sales (user_id, customer_id, subtotal, discount, tax, total_amount, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING sale_id",
-            (session['user_id'], customer_id, subtotal, discount, tax, total, payment_method)
+            "INSERT INTO sales (user_id, customer_id, customer_name, subtotal, discount, tax, total_amount, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING sale_id",
+            (session['user_id'], customer_id, customer_name, subtotal, discount, tax, total, payment_method)
         ).fetchone()
         sale_id = row[0]
 
@@ -676,7 +683,7 @@ def process_sale():
 def receipt(sale_id):
     conn = get_db()
     sale = conn.execute('''
-        SELECT s.*, u.full_name as cashier, COALESCE(c.name, 'Walk-in') as customer_name
+        SELECT s.*, u.full_name as cashier, COALESCE(c.name, s.customer_name, 'Walk-in') as customer_name
         FROM sales s
         JOIN users u ON s.user_id = u.user_id
         LEFT JOIN customers c ON s.customer_id = c.customer_id
