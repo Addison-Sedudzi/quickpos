@@ -1,9 +1,3 @@
-databases:
-  - name: quickpos-db
-    databaseName: quickpos
-    user: quickpos
-    plan: free
-
 services:
   - type: web
     name: quickpos
@@ -16,6 +10,4 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: DATABASE_URL
-        fromDatabase:
-          name: quickpos-db
-          property: connectionString
+        sync: false
