@@ -375,6 +375,42 @@ def init_db():
         pass  # Column already exists
 
     conn.commit()
+
+    # Backfill: create customer records for sales that have a typed name but no customer_id
+    try:
+        unnamed = cursor.execute("""
+            SELECT DISTINCT customer_name FROM sales
+            WHERE customer_name IS NOT NULL AND customer_id IS NULL
+        """).fetchall()
+        for row in unnamed:
+            name = row[0]
+            if not name:
+                continue
+            existing = cursor.execute(
+                "SELECT customer_id FROM customers WHERE LOWER(name) = LOWER(%s)", (name,)
+            ).fetchone()
+            if existing:
+                cid = existing[0]
+            else:
+                cid = cursor.execute(
+                    "INSERT INTO customers (name, phone, email, address, loyalty_points) VALUES (%s, '', '', '', 0) RETURNING customer_id",
+                    (name,)
+                ).fetchone()[0]
+            cursor.execute(
+                "UPDATE sales SET customer_id = %s WHERE LOWER(customer_name) = LOWER(%s) AND customer_id IS NULL",
+                (cid, name)
+            )
+            total = cursor.execute(
+                "SELECT COALESCE(SUM(total_amount), 0) FROM sales WHERE customer_id = %s", (cid,)
+            ).fetchone()[0]
+            cursor.execute(
+                "UPDATE customers SET loyalty_points = %s WHERE customer_id = %s",
+                (int(total // 10), cid)
+            )
+        conn.commit()
+    except Exception:
+        pass
+
     conn.close()
 
 
@@ -608,6 +644,20 @@ def process_sale():
 
     conn = get_db()
     try:
+        # If a name was typed but no registered customer selected, find or create a customer record
+        if customer_name and not customer_id:
+            existing = conn.execute(
+                "SELECT customer_id FROM customers WHERE LOWER(name) = LOWER(%s)", (customer_name,)
+            ).fetchone()
+            if existing:
+                customer_id = existing['customer_id']
+            else:
+                new_cust = conn.execute(
+                    "INSERT INTO customers (name, phone, email, address, loyalty_points) VALUES (%s, '', '', '', 0) RETURNING customer_id",
+                    (customer_name,)
+                ).fetchone()
+                customer_id = new_cust[0]
+
         subtotal = sum(item['price'] * item['quantity'] for item in items)
         tax = subtotal * (tax_rate / 100)
         total = subtotal - discount + tax
