@@ -109,7 +109,7 @@
                             <span class="text-muted">({{ log.previous_quantity }} → {{ log.new_quantity }})</span>
                         </td>
                         <td>{{ log.full_name or '—' }}</td>
-                        <td>{{ log.created_at[:16] }}</td>
+                        <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '' }}</td>
                     </tr>
                     {% else %}
                     <tr><td colspan="5" class="text-center text-muted" style="padding:24px;">No activity yet</td></tr>
