@@ -216,11 +216,8 @@ function updateTotals() {
 }
 
 function updateChange() {
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const discount = parseFloat(document.getElementById('discountInput').value) || 0;
-    const taxRate = parseFloat(document.getElementById('taxInput').value) || 0;
-    const tax = subtotal * (taxRate / 100);
-    const total = subtotal - discount + tax;
+    const totalText = document.getElementById('totalAmount').textContent.replace('GHS ', '');
+    const total = parseFloat(totalText) || 0;
     const paid = parseFloat(document.getElementById('amountPaid').value) || 0;
 
     if (paid > 0) {
@@ -332,9 +329,19 @@ function checkout() {
     if (cart.length === 0) { alert('Cart is empty!'); return; }
 
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+    let discount = parseFloat(document.getElementById('discountInput').value) || 0;
     const taxRate = parseFloat(document.getElementById('taxInput').value) || 0;
-    const total = subtotal - discount + (subtotal * taxRate / 100);
+
+    // Include promo code discount
+    if (activePromo && subtotal >= activePromo.min_purchase) {
+        if (activePromo.discount_type === 'percentage') {
+            discount += subtotal * (activePromo.discount_value / 100);
+        } else {
+            discount += activePromo.discount_value;
+        }
+    }
+
+    const total = Math.max(0, subtotal - discount + (subtotal * taxRate / 100));
     const paid = parseFloat(document.getElementById('amountPaid').value) || 0;
     const method = document.getElementById('paymentMethod').value;
 
