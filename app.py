@@ -556,6 +556,17 @@ def barcode_lookup():
     return jsonify({'found': False, 'message': f'No product found with barcode: {barcode}'})
 
 
+@app.route('/api/product_lookup/<int:product_id>')
+@login_required
+def product_lookup(product_id):
+    """Look up a product by ID — used by QR code scanner"""
+    conn = get_db()
+    product = conn.execute("SELECT * FROM products WHERE product_id = %s", (product_id,)).fetchone()
+    conn.close()
+    if product:
+        return jsonify({'found': True, 'product': dict(zip(product.keys(), product))})
+    return jsonify({'found': False})
+
 @app.route('/api/barcode_image/<barcode_value>')
 @login_required
 def barcode_image(barcode_value):

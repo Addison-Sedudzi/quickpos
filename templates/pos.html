@@ -15,7 +15,8 @@
             </div>
         </div>
         <div style="margin-bottom:12px; font-size:12px; color:var(--text-light); display:flex; align-items:center; gap:8px;">
-            <i class="fas fa-info-circle"></i> Barcode scanner ready — scan any product barcode to add it to cart instantly
+            <i class="fas fa-info-circle"></i> Barcode scanner ready — scan any product barcode or QR code to add it to cart instantly
+            <button onclick="openQRScanner()" class="btn btn-sm btn-outline" style="margin-left:auto; font-size:12px; padding:4px 12px;"><i class="fas fa-qrcode"></i> Scan QR</button>
         </div>
         </div>
         <div class="product-grid" id="productGrid">
@@ -27,6 +28,7 @@
                 {% if p.barcode %}
                 <img src="/api/barcode_image/{{ p.barcode }}" alt="{{ p.barcode }}" style="width:100%; max-width:140px; height:auto; margin:4px auto 0; display:block;">
                 {% endif %}
+                <div id="qr-{{ p.product_id }}" style="margin:4px auto 0; width:72px; height:72px;" onclick="event.stopPropagation()"></div>
                 <div class="product-stock">Stock: {{ p.quantity }}</div>
             </div>
             {% endfor %}
@@ -136,9 +138,33 @@
     </div>
 </div>
 
+<!-- QR Scanner Modal -->
+<div id="qrScannerModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:12px; padding:24px; max-width:420px; width:90%; position:relative;">
+        <h3 style="margin:0 0 16px; display:flex; align-items:center; gap:8px;"><i class="fas fa-qrcode"></i> Scan Product QR Code</h3>
+        <p style="font-size:13px; color:var(--text-light); margin-bottom:12px;">Point the camera at a product QR code to add it to the cart.</p>
+        <div id="qr-reader" style="width:100%; border-radius:8px; overflow:hidden;"></div>
+        <button onclick="closeQRScanner()" class="btn btn-outline" style="margin-top:16px; width:100%;"><i class="fas fa-times"></i> Cancel</button>
+    </div>
+</div>
+
+<!-- Product Detail Toast -->
+<div id="productDetailToast" style="display:none; position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:white; border-radius:12px; padding:14px 20px; box-shadow:0 8px 32px rgba(0,0,0,0.18); z-index:9998; min-width:320px; border-left:4px solid #10b981;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <span id="toastEmoji" style="font-size:30px;"></span>
+        <div style="flex:1;">
+            <div id="toastName" style="font-weight:700; font-size:15px;"></div>
+            <div id="toastDetails" style="font-size:12px; color:var(--text-light); margin-top:2px;"></div>
+        </div>
+        <span style="background:#10b981; color:white; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;"><i class="fas fa-check"></i> Added</span>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 let cart = [];
 
@@ -291,9 +317,11 @@ function searchProducts(query) {
                     <div class="product-name">${p.product_name}</div>
                     <div class="product-price">GHS ${p.price.toFixed(2)}</div>
                     ${p.barcode ? `<img src="/api/barcode_image/${p.barcode}" alt="${p.barcode}" style="width:100%;max-width:140px;height:auto;margin:4px auto 0;display:block;">` : ''}
+                    <div id="qr-${p.product_id}" style="margin:4px auto 0; width:72px; height:72px;" onclick="event.stopPropagation()"></div>
                     <div class="product-stock">Stock: ${p.quantity}</div>
                 </div>
             `).join('');
+            generateAllQRCodes();
         });
 }
 
@@ -327,6 +355,11 @@ function handleSearchInput(value) {
 }
 
 function lookupBarcode(barcode) {
+    // Handle QR code format (pid:42)
+    if (barcode.startsWith('pid:')) {
+        const id = parseInt(barcode.replace('pid:', ''));
+        if (!isNaN(id)) { lookupProductById(id); return; }
+    }
     fetch('/api/barcode_lookup?barcode=' + encodeURIComponent(barcode))
         .then(r => r.json())
         .then(data => {
@@ -500,6 +533,92 @@ function pollPayment(reference, total) {
         });
     }, 5000);
 }
+
+// ─── QR Code Generation ───
+function generateAllQRCodes() {
+    document.querySelectorAll('[id^="qr-"]').forEach(el => {
+        const productId = el.id.replace('qr-', '');
+        if (!isNaN(parseInt(productId)) && !el.querySelector('canvas') && !el.querySelector('img')) {
+            try {
+                new QRCode(el, {
+                    text: 'pid:' + productId,
+                    width: 72,
+                    height: 72,
+                    colorDark: '#1e293b',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } catch(e) {}
+        }
+    });
+}
+
+// ─── QR Camera Scanner ───
+let html5QrCode = null;
+
+function openQRScanner() {
+    const modal = document.getElementById('qrScannerModal');
+    modal.style.display = 'flex';
+    html5QrCode = new Html5Qrcode('qr-reader');
+    html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => { closeQRScanner(); handleScannedQR(decodedText); },
+        () => {}
+    ).catch(() => {
+        // Fallback to front camera
+        html5QrCode.start(
+            { facingMode: 'user' },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            (decodedText) => { closeQRScanner(); handleScannedQR(decodedText); },
+            () => {}
+        ).catch(() => { closeQRScanner(); alert('Could not access camera. Please allow camera access and try again.'); });
+    });
+}
+
+function closeQRScanner() {
+    document.getElementById('qrScannerModal').style.display = 'none';
+    if (html5QrCode) {
+        html5QrCode.stop().then(() => { html5QrCode.clear(); html5QrCode = null; }).catch(() => { html5QrCode = null; });
+    }
+}
+
+function handleScannedQR(text) {
+    if (text.startsWith('pid:')) {
+        const id = parseInt(text.replace('pid:', ''));
+        if (!isNaN(id)) { lookupProductById(id); return; }
+    }
+    // Fallback: treat as barcode
+    lookupBarcode(text);
+}
+
+function lookupProductById(id) {
+    fetch('/api/product_lookup/' + id)
+        .then(r => r.json())
+        .then(data => {
+            if (data.found) {
+                const p = data.product;
+                if (p.quantity <= 0) { alert('Sorry, ' + p.product_name + ' is out of stock.'); return; }
+                addToCart(p.product_id, p.product_name, p.price, p.quantity);
+                showProductDetailToast(p);
+            } else {
+                alert('Product not found.');
+            }
+        });
+}
+
+function showProductDetailToast(product) {
+    const emojis = { Beverages: '🥤', Bakery: '🍞', Grains: '🍚', Dairy: '🥛', Poultry: '🥚', Household: '🏠', Canned: '🥫' };
+    document.getElementById('toastEmoji').textContent = emojis[product.category] || '🛒';
+    document.getElementById('toastName').textContent = product.product_name;
+    document.getElementById('toastDetails').textContent = 'GHS ' + parseFloat(product.price).toFixed(2) + ' • ' + product.category + ' • Stock: ' + product.quantity;
+    const toast = document.getElementById('productDetailToast');
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+}
+
+// Generate QR codes on page load
+window.addEventListener('load', generateAllQRCodes);
 
 function completeSaleAfterMomo(total, reference) {
     const data = {
