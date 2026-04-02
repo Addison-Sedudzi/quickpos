@@ -1542,6 +1542,86 @@ def validate_promo():
     return jsonify({'valid': False, 'message': 'Invalid or expired promo code'})
 
 
+# ── Mobile Money Payment ───────────────────────────────────
+import urllib.request
+import urllib.error
+import json as _json
+
+@app.route('/api/initiate_momo', methods=['POST'])
+@login_required
+def initiate_momo():
+    data = request.get_json()
+    phone = data.get('phone', '').strip()
+    network = data.get('network', 'mtn')
+    amount = data.get('amount', 0)
+
+    if not phone or not amount:
+        return jsonify({'success': False, 'message': 'Phone number and amount are required'})
+
+    if not PAYSTACK_SECRET_KEY:
+        return jsonify({'success': False, 'message': 'Paystack not configured. Add PAYSTACK_SECRET_KEY to environment variables.'})
+
+    payload = _json.dumps({
+        'amount': int(float(amount) * 100),  # convert to pesewas
+        'email': f'{phone}@goddid.pos',
+        'currency': 'GHS',
+        'mobile_money': {
+            'phone': phone,
+            'provider': network
+        }
+    }).encode('utf-8')
+
+    req = urllib.request.Request(
+        'https://api.paystack.co/charge',
+        data=payload,
+        headers={
+            'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}',
+            'Content-Type': 'application/json'
+        },
+        method='POST'
+    )
+
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = _json.loads(response.read().decode())
+            if result.get('status'):
+                reference = result['data'].get('reference')
+                return jsonify({'success': True, 'reference': reference})
+            else:
+                return jsonify({'success': False, 'message': result.get('message', 'Failed to initiate payment')})
+    except urllib.error.HTTPError as e:
+        error_body = _json.loads(e.read().decode())
+        return jsonify({'success': False, 'message': error_body.get('message', str(e))})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/check_payment/<reference>', methods=['GET'])
+@login_required
+def check_payment(reference):
+    if not PAYSTACK_SECRET_KEY:
+        return jsonify({'status': 'failed', 'message': 'Paystack not configured'})
+
+    req = urllib.request.Request(
+        f'https://api.paystack.co/transaction/verify/{reference}',
+        headers={'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}'},
+        method='GET'
+    )
+
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = _json.loads(response.read().decode())
+            tx_status = result['data'].get('status')
+            if tx_status == 'success':
+                return jsonify({'status': 'success'})
+            elif tx_status in ['failed', 'abandoned']:
+                return jsonify({'status': 'failed'})
+            else:
+                return jsonify({'status': 'pending'})
+    except Exception as e:
+        return jsonify({'status': 'pending'})
+
+
 # ── Chatbot ───────────────────────────────────
 @app.route('/api/chat', methods=['POST'])
 @login_required

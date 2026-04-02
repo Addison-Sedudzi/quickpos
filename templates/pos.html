@@ -100,11 +100,26 @@
             </div>
             <div class="form-group" style="margin-bottom: 8px;">
                 <label style="font-size: 12px;"><i class="fas fa-credit-card"></i> Payment Method</label>
-                <select id="paymentMethod" class="form-control" style="padding: 8px 10px; font-size: 13px;">
+                <select id="paymentMethod" class="form-control" style="padding: 8px 10px; font-size: 13px;" onchange="onPaymentMethodChange()">
                     <option value="Cash">Cash</option>
                     <option value="Mobile Money">Mobile Money</option>
                     <option value="Card">Credit/Debit Card</option>
                 </select>
+            </div>
+            <div id="momoFields" style="display:none;">
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label style="font-size: 12px;"><i class="fas fa-mobile-alt"></i> Customer Phone Number</label>
+                    <input type="tel" id="momoPhone" class="form-control" placeholder="e.g. 0551234567" style="padding: 8px 10px; font-size: 13px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label style="font-size: 12px;"><i class="fas fa-signal"></i> Network Provider</label>
+                    <select id="momoNetwork" class="form-control" style="padding: 8px 10px; font-size: 13px;">
+                        <option value="mtn">MTN</option>
+                        <option value="vod">Vodafone</option>
+                        <option value="tgo">AirtelTigo</option>
+                    </select>
+                </div>
+                <div id="momoStatus" style="font-size:12px; padding:8px; border-radius:6px; display:none; margin-bottom:8px;"></div>
             </div>
             <div class="form-group" style="margin-bottom: 8px;" id="amountPaidGroup">
                 <label style="font-size: 12px;"><i class="fas fa-money-bill"></i> Amount Paid</label>
@@ -114,7 +129,7 @@
                 <span>Change</span>
                 <span id="changeAmount" style="font-weight:700; color: var(--success);">GHS 0.00</span>
             </div>
-            <button class="btn btn-success btn-block" onclick="checkout()">
+            <button class="btn btn-success btn-block" id="checkoutBtn" onclick="checkout()">
                 <i class="fas fa-check-circle"></i> Complete Sale
             </button>
         </div>
@@ -158,6 +173,22 @@ function updateQty(index, delta) {
 function clearCart() {
     cart = [];
     renderCart();
+}
+
+function onPaymentMethodChange() {
+    const method = document.getElementById('paymentMethod').value;
+    const momoFields = document.getElementById('momoFields');
+    const amountPaidGroup = document.getElementById('amountPaidGroup');
+    const changeRow = document.getElementById('changeRow');
+    if (method === 'Mobile Money') {
+        momoFields.style.display = 'block';
+        amountPaidGroup.style.display = 'none';
+        changeRow.style.display = 'none';
+    } else {
+        momoFields.style.display = 'none';
+        amountPaidGroup.style.display = 'block';
+        document.getElementById('momoStatus').style.display = 'none';
+    }
 }
 
 function onCustomerChange() {
@@ -366,6 +397,13 @@ function checkout() {
         return;
     }
 
+    if (method === 'Mobile Money') {
+        const phone = document.getElementById('momoPhone').value.trim();
+        if (!phone) { alert('Please enter the customer\'s phone number.'); return; }
+        initiateMomo(total, phone);
+        return;
+    }
+
     const amountPaid = method === 'Cash' ? paid : total;
 
     const data = {
@@ -398,6 +436,104 @@ function checkout() {
         }
     })
     .catch(err => alert('Error processing sale: ' + err));
+}
+
+function initiateMomo(total, phone) {
+    const network = document.getElementById('momoNetwork').value;
+    const statusEl = document.getElementById('momoStatus');
+    const btn = document.getElementById('checkoutBtn');
+
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#fef3c7';
+    statusEl.style.color = '#92400e';
+    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending payment prompt to ' + phone + '...';
+    btn.disabled = true;
+
+    fetch('/api/initiate_momo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone, network: network, amount: total })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            statusEl.style.background = '#d1fae5';
+            statusEl.style.color = '#065f46';
+            statusEl.innerHTML = '<i class="fas fa-check-circle"></i> Prompt sent! Waiting for customer to approve on their phone...';
+            pollPayment(result.reference, total);
+        } else {
+            statusEl.style.background = '#fee2e2';
+            statusEl.style.color = '#991b1b';
+            statusEl.innerHTML = '<i class="fas fa-times-circle"></i> Failed: ' + result.message;
+            btn.disabled = false;
+        }
+    })
+    .catch(err => {
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.color = '#991b1b';
+        statusEl.innerHTML = '<i class="fas fa-times-circle"></i> Error: ' + err;
+        btn.disabled = false;
+    });
+}
+
+function pollPayment(reference, total) {
+    const statusEl = document.getElementById('momoStatus');
+    const btn = document.getElementById('checkoutBtn');
+    let attempts = 0;
+
+    const interval = setInterval(() => {
+        attempts++;
+        fetch('/api/check_payment/' + reference)
+        .then(r => r.json())
+        .then(result => {
+            if (result.status === 'success') {
+                clearInterval(interval);
+                statusEl.innerHTML = '<i class="fas fa-check-circle"></i> Payment confirmed! Completing sale...';
+                completeSaleAfterMomo(total, reference);
+            } else if (result.status === 'failed' || attempts >= 24) {
+                clearInterval(interval);
+                statusEl.style.background = '#fee2e2';
+                statusEl.style.color = '#991b1b';
+                statusEl.innerHTML = '<i class="fas fa-times-circle"></i> Payment not confirmed. Please try again.';
+                btn.disabled = false;
+            }
+        });
+    }, 5000);
+}
+
+function completeSaleAfterMomo(total, reference) {
+    const data = {
+        items: cart.map(i => ({ product_id: i.product_id, price: i.price, quantity: i.quantity })),
+        customer_id: document.getElementById('customerSelect').value,
+        customer_name: document.getElementById('customerName').value.trim(),
+        payment_method: 'Mobile Money',
+        discount: parseFloat(document.getElementById('discountInput').value) || 0,
+        tax_rate: parseFloat(document.getElementById('taxInput').value) || 0,
+        amount_paid: total,
+        momo_reference: reference
+    };
+
+    fetch('/api/process_sale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            document.getElementById('momoStatus').style.display = 'none';
+            document.getElementById('checkoutBtn').disabled = false;
+            window.open('/receipt/' + result.sale_id, '_blank');
+            cart = [];
+            renderCart();
+            document.getElementById('discountInput').value = 0;
+            document.getElementById('taxInput').value = 0;
+            document.getElementById('momoPhone').value = '';
+        } else {
+            alert('Error: ' + result.message);
+            document.getElementById('checkoutBtn').disabled = false;
+        }
+    });
 }
 </script>
 {% endblock %}
