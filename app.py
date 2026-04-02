@@ -1639,70 +1639,113 @@ def check_payment(reference):
         return jsonify({'status': 'pending'})
 
 
-# ── Chatbot (Claude AI) ───────────────────────────────────
+# ── Chatbot ───────────────────────────────────
 @app.route('/api/chat', methods=['POST'])
 @login_required
 def chat():
-    import urllib.request as _url_req
     data = request.get_json()
-    message = data.get('message', '').strip()
+    message = data.get('message', '').strip().lower()
     if not message:
         return jsonify({'response': 'Please type a message.'})
 
-    api_key = os.getenv('ANTHROPIC_API_KEY')
-    if not api_key:
-        return jsonify({'response': 'AI assistant not configured. Please add ANTHROPIC_API_KEY to environment variables.'})
-
-    # Fetch live product data for context
     conn = get_db()
-    products = conn.execute(
-        "SELECT product_name, category, price, quantity FROM products ORDER BY category, product_name"
+
+    # Greeting
+    if any(w in message for w in ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']):
+        conn.close()
+        return jsonify({'response': 'Hello! I can help you with product information. Try asking:\n• "List all products"\n• "Price of [product]"\n• "Is [product] available?"\n• "Show low stock items"'})
+
+    # List all products
+    if any(p in message for p in ['list products', 'all products', 'what products', 'show products', 'what do you have', 'what do you sell', 'show all']):
+        rows = conn.execute("SELECT product_name, category, price, quantity FROM products ORDER BY category, product_name").fetchall()
+        conn.close()
+        if not rows:
+            return jsonify({'response': 'No products found in the database.'})
+        response = 'Our products:\n'
+        current_cat = None
+        for p in rows:
+            if p['category'] != current_cat:
+                current_cat = p['category']
+                response += f'\n{current_cat}:\n'
+            stock = f'{p["quantity"]} in stock' if p['quantity'] > 0 else 'Out of stock'
+            response += f'  • {p["product_name"]} - GHS {p["price"]:.2f} ({stock})\n'
+        return jsonify({'response': response.strip()})
+
+    # Categories
+    if any(p in message for p in ['categories', 'category', 'types of']):
+        rows = conn.execute("SELECT DISTINCT category FROM products ORDER BY category").fetchall()
+        conn.close()
+        if not rows:
+            return jsonify({'response': 'No categories found.'})
+        cats = [r['category'] for r in rows]
+        return jsonify({'response': f'Product categories: {", ".join(cats)}'})
+
+    # Low / out of stock
+    if any(p in message for p in ['low stock', 'out of stock', 'running out', 'almost out', 'stock alert']):
+        rows = conn.execute("SELECT product_name, quantity, low_stock_threshold FROM products WHERE quantity <= low_stock_threshold ORDER BY quantity").fetchall()
+        conn.close()
+        if not rows:
+            return jsonify({'response': 'All products are well-stocked!'})
+        response = 'Low / out of stock products:\n'
+        for p in rows:
+            if p['quantity'] == 0:
+                response += f'  • {p["product_name"]} — OUT OF STOCK\n'
+            else:
+                response += f'  • {p["product_name"]} — Only {p["quantity"]} left\n'
+        return jsonify({'response': response.strip()})
+
+    # Price query
+    if any(p in message for p in ['price', 'how much', 'cost', 'rate']):
+        search = message
+        for w in ['price of', 'price', 'how much is', 'how much does', 'how much for', 'how much', 'cost of', 'cost', 'rate of', 'rate', 'what is the', "what's the", 'the', 'of', 'for', '?']:
+            search = search.replace(w, ' ')
+        search = search.strip()
+        if search:
+            rows = conn.execute("SELECT product_name, price, quantity FROM products WHERE LOWER(product_name) LIKE %s ORDER BY product_name", (f'%{search}%',)).fetchall()
+            conn.close()
+            if rows:
+                response = ''
+                for p in rows:
+                    stock = f'{p["quantity"]} in stock' if p['quantity'] > 0 else 'Out of stock'
+                    response += f'{p["product_name"]}: GHS {p["price"]:.2f} ({stock})\n'
+                return jsonify({'response': response.strip()})
+        conn.close()
+        return jsonify({'response': f'I couldn\'t find that product. Try "list products" to see everything we have.'})
+
+    # Availability query
+    if any(p in message for p in ['available', 'in stock', 'do you have', 'have you got', 'is there']):
+        search = message
+        for w in ['is there', 'do you have', 'have you got', 'available', 'in stock', 'is', 'are', 'the', '?']:
+            search = search.replace(w, ' ')
+        search = search.strip()
+        if search:
+            rows = conn.execute("SELECT product_name, price, quantity FROM products WHERE LOWER(product_name) LIKE %s ORDER BY product_name", (f'%{search}%',)).fetchall()
+            conn.close()
+            if rows:
+                response = ''
+                for p in rows:
+                    if p['quantity'] > 0:
+                        response += f'✓ {p["product_name"]} is available — {p["quantity"]} in stock (GHS {p["price"]:.2f})\n'
+                    else:
+                        response += f'✗ {p["product_name"]} is currently out of stock\n'
+                return jsonify({'response': response.strip()})
+        conn.close()
+        return jsonify({'response': 'Please specify a product name. E.g., "Is milk available?"'})
+
+    # General search
+    rows = conn.execute(
+        "SELECT product_name, price, quantity, category FROM products WHERE LOWER(product_name) LIKE %s OR LOWER(category) LIKE %s ORDER BY product_name LIMIT 5",
+        (f'%{message}%', f'%{message}%')
     ).fetchall()
     conn.close()
+    if rows:
+        response = f'Results for "{message}":\n'
+        for p in rows:
+            stock = f'{p["quantity"]} in stock' if p['quantity'] > 0 else 'Out of stock'
+            response += f'  • {p["product_name"]} ({p["category"]}) — GHS {p["price"]:.2f} — {stock}\n'
+        return jsonify({'response': response.strip()})
 
-    product_list = '\n'.join([
-        f"- {p['product_name']} ({p['category']}): GHS {p['price']:.2f}, {p['quantity']} in stock"
-        for p in products
-    ]) or 'No products currently in database.'
-
-    system_prompt = (
-        "You are a helpful assistant for GOD_DID Supermarket, a supermarket in Ghana. "
-        "You help staff and customers with any question — products, prices, stock, general knowledge, or anything else. "
-        "Be friendly, concise, and helpful. Reply in plain text without markdown symbols like ** or ##.\n\n"
-        f"Current product inventory:\n{product_list}"
-    )
-
-    payload = _json.dumps({
-        'model': 'claude-haiku-4-5-20251001',
-        'max_tokens': 1024,
-        'system': system_prompt,
-        'messages': [{'role': 'user', 'content': message}]
-    }).encode('utf-8')
-
-    req = _url_req.Request(
-        'https://api.anthropic.com/v1/messages',
-        data=payload,
-        headers={
-            'x-api-key': api_key,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
-        },
-        method='POST'
-    )
-
-    try:
-        with _url_req.urlopen(req, timeout=30) as resp:
-            result = _json.loads(resp.read().decode())
-            return jsonify({'response': result['content'][0]['text']})
-    except _url_req.HTTPError as e:
-        try:
-            err = _json.loads(e.read().decode())
-            msg = err.get('error', {}).get('message', str(e))
-        except Exception:
-            msg = f'API error {e.code}'
-        return jsonify({'response': f'Sorry, I encountered an error: {msg}'})
-    except Exception as e:
-        return jsonify({'response': 'Sorry, I could not process your request right now. Please try again.'})
+    return jsonify({'response': f'I couldn\'t find anything for "{message}". You can ask me:\n• "List all products"\n• "Price of [product]"\n• "Is [product] available?"\n• "Show low stock items"'})
 
 
 # ══════════════════════════════════════════════
