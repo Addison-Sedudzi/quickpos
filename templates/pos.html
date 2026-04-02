@@ -109,19 +109,9 @@
                 </select>
             </div>
             <div id="momoFields" style="display:none;">
-                <div class="form-group" style="margin-bottom: 8px;">
-                    <label style="font-size: 12px;"><i class="fas fa-mobile-alt"></i> Customer Phone Number</label>
-                    <input type="tel" id="momoPhone" class="form-control" placeholder="e.g. 0551234567" style="padding: 8px 10px; font-size: 13px;">
+                <div style="background:#eef2ff; border-radius:8px; padding:10px 12px; font-size:12px; color:#4338ca; margin-bottom:8px;">
+                    <i class="fas fa-info-circle"></i> A Paystack checkout popup will open for Mobile Money payment.
                 </div>
-                <div class="form-group" style="margin-bottom: 8px;">
-                    <label style="font-size: 12px;"><i class="fas fa-signal"></i> Network Provider</label>
-                    <select id="momoNetwork" class="form-control" style="padding: 8px 10px; font-size: 13px;">
-                        <option value="mtn">MTN</option>
-                        <option value="vod">Vodafone</option>
-                        <option value="tgo">AirtelTigo</option>
-                    </select>
-                </div>
-                <div id="momoStatus" style="font-size:12px; padding:8px; border-radius:6px; display:none; margin-bottom:8px;"></div>
             </div>
             <div class="form-group" style="margin-bottom: 8px;" id="amountPaidGroup">
                 <label style="font-size: 12px;"><i class="fas fa-money-bill"></i> Amount Paid</label>
@@ -167,9 +157,11 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://js.paystack.co/v1/inline.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
+    const PAYSTACK_PUBLIC_KEY = "{{ paystack_public_key }}";
 let cart = [];
 
 function addToCart(id, name, price, maxQty) {
@@ -217,7 +209,6 @@ function onPaymentMethodChange() {
     } else {
         momoFields.style.display = 'none';
         amountPaidGroup.style.display = 'block';
-        document.getElementById('momoStatus').style.display = 'none';
     }
 }
 
@@ -435,9 +426,7 @@ function checkout() {
     }
 
     if (method === 'Mobile Money') {
-        const phone = document.getElementById('momoPhone').value.trim();
-        if (!phone) { alert('Please enter the customer\'s phone number.'); return; }
-        initiateMomo(total, phone);
+        openPaystackPopup(total);
         return;
     }
 
@@ -475,67 +464,29 @@ function checkout() {
     .catch(err => alert('Error processing sale: ' + err));
 }
 
-function initiateMomo(total, phone) {
-    const network = document.getElementById('momoNetwork').value;
-    const statusEl = document.getElementById('momoStatus');
+function openPaystackPopup(total) {
     const btn = document.getElementById('checkoutBtn');
+    const email = 'customer@goddid.com';
+    const amountKobo = Math.round(total * 100);
+    const ref = 'GD-' + Date.now();
 
-    statusEl.style.display = 'block';
-    statusEl.style.background = '#fef3c7';
-    statusEl.style.color = '#92400e';
-    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending payment prompt to ' + phone + '...';
     btn.disabled = true;
 
-    fetch('/api/initiate_momo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone, network: network, amount: total })
-    })
-    .then(r => r.json())
-    .then(result => {
-        if (result.success) {
-            statusEl.style.background = '#d1fae5';
-            statusEl.style.color = '#065f46';
-            statusEl.innerHTML = '<i class="fas fa-check-circle"></i> Prompt sent! Waiting for customer to approve on their phone...';
-            pollPayment(result.reference, total);
-        } else {
-            statusEl.style.background = '#fee2e2';
-            statusEl.style.color = '#991b1b';
-            statusEl.innerHTML = '<i class="fas fa-times-circle"></i> Failed: ' + result.message;
+    const handler = PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY,
+        email: email,
+        amount: amountKobo,
+        currency: 'GHS',
+        ref: ref,
+        channels: ['mobile_money'],
+        callback: function(response) {
+            completeSaleAfterMomo(total, response.reference);
+        },
+        onClose: function() {
             btn.disabled = false;
         }
-    })
-    .catch(err => {
-        statusEl.style.background = '#fee2e2';
-        statusEl.style.color = '#991b1b';
-        statusEl.innerHTML = '<i class="fas fa-times-circle"></i> Error: ' + err;
-        btn.disabled = false;
     });
-}
-
-function pollPayment(reference, total) {
-    const statusEl = document.getElementById('momoStatus');
-    const btn = document.getElementById('checkoutBtn');
-    let attempts = 0;
-
-    const interval = setInterval(() => {
-        attempts++;
-        fetch('/api/check_payment/' + reference)
-        .then(r => r.json())
-        .then(result => {
-            if (result.status === 'success') {
-                clearInterval(interval);
-                statusEl.innerHTML = '<i class="fas fa-check-circle"></i> Payment confirmed! Completing sale...';
-                completeSaleAfterMomo(total, reference);
-            } else if (result.status === 'failed' || attempts >= 24) {
-                clearInterval(interval);
-                statusEl.style.background = '#fee2e2';
-                statusEl.style.color = '#991b1b';
-                statusEl.innerHTML = '<i class="fas fa-times-circle"></i> Payment not confirmed. Please try again.';
-                btn.disabled = false;
-            }
-        });
-    }, 5000);
+    handler.openIframe();
 }
 
 // ─── QR Code Generation ───
@@ -663,14 +614,12 @@ function completeSaleAfterMomo(total, reference) {
     .then(r => r.json())
     .then(result => {
         if (result.success) {
-            document.getElementById('momoStatus').style.display = 'none';
             document.getElementById('checkoutBtn').disabled = false;
             window.open('/receipt/' + result.sale_id, '_blank');
             cart = [];
             renderCart();
             document.getElementById('discountInput').value = 0;
             document.getElementById('taxInput').value = 0;
-            document.getElementById('momoPhone').value = '';
         } else {
             alert('Error: ' + result.message);
             document.getElementById('checkoutBtn').disabled = false;
