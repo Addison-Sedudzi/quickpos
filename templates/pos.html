@@ -143,7 +143,11 @@
     <div style="background:white; border-radius:12px; padding:24px; max-width:420px; width:90%; position:relative;">
         <h3 style="margin:0 0 16px; display:flex; align-items:center; gap:8px;"><i class="fas fa-qrcode"></i> Scan Product QR Code</h3>
         <p style="font-size:13px; color:var(--text-light); margin-bottom:12px;">Point the camera at a product QR code to add it to the cart.</p>
-        <div id="qr-reader" style="width:100%; border-radius:8px; overflow:hidden;"></div>
+        <div style="position:relative; width:100%; border-radius:8px; overflow:hidden; background:#000;">
+            <video id="qrVideo" style="width:100%; display:block;" playsinline autoplay muted></video>
+            <canvas id="qrCanvas" style="display:none;"></canvas>
+            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; border:3px solid #10b981; border-radius:8px; pointer-events:none;"></div>
+        </div>
         <button onclick="closeQRScanner()" class="btn btn-outline" style="margin-top:16px; width:100%;"><i class="fas fa-times"></i> Cancel</button>
     </div>
 </div>
@@ -164,7 +168,7 @@
 
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
 let cart = [];
 
@@ -554,33 +558,52 @@ function generateAllQRCodes() {
 }
 
 // ─── QR Camera Scanner ───
-let html5QrCode = null;
+let scannerStream = null;
+let scannerAnimFrame = null;
 
 function openQRScanner() {
-    const modal = document.getElementById('qrScannerModal');
-    modal.style.display = 'flex';
-    html5QrCode = new Html5Qrcode('qr-reader');
-    html5QrCode.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => { closeQRScanner(); handleScannedQR(decodedText); },
-        () => {}
-    ).catch(() => {
-        // Fallback to front camera
-        html5QrCode.start(
-            { facingMode: 'user' },
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            (decodedText) => { closeQRScanner(); handleScannedQR(decodedText); },
-            () => {}
-        ).catch(() => { closeQRScanner(); alert('Could not access camera. Please allow camera access and try again.'); });
-    });
+    document.getElementById('qrScannerModal').style.display = 'flex';
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } })
+        .then(stream => {
+            scannerStream = stream;
+            const video = document.getElementById('qrVideo');
+            video.srcObject = stream;
+            video.play();
+            video.addEventListener('loadedmetadata', scanQRFrame);
+        })
+        .catch(err => {
+            closeQRScanner();
+            alert('Cannot access camera: ' + (err.message || err) + '. Make sure you allow camera permission.');
+        });
+}
+
+function scanQRFrame() {
+    const video = document.getElementById('qrVideo');
+    const canvas = document.getElementById('qrCanvas');
+    if (!video || !canvas || !scannerStream || video.readyState < 2) {
+        scannerAnimFrame = requestAnimationFrame(scanQRFrame);
+        return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+        closeQRScanner();
+        handleScannedQR(code.data);
+        return;
+    }
+    scannerAnimFrame = requestAnimationFrame(scanQRFrame);
 }
 
 function closeQRScanner() {
+    if (scannerAnimFrame) { cancelAnimationFrame(scannerAnimFrame); scannerAnimFrame = null; }
+    if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+    const video = document.getElementById('qrVideo');
+    if (video) { video.srcObject = null; }
     document.getElementById('qrScannerModal').style.display = 'none';
-    if (html5QrCode) {
-        html5QrCode.stop().then(() => { html5QrCode.clear(); html5QrCode = null; }).catch(() => { html5QrCode = null; });
-    }
 }
 
 function handleScannedQR(text) {
