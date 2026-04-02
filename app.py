@@ -527,7 +527,8 @@ def pos():
     products = conn.execute("SELECT * FROM products WHERE quantity > 0 ORDER BY product_name").fetchall()
     customers = conn.execute("SELECT * FROM customers ORDER BY name").fetchall()
     conn.close()
-    return render_template('pos.html', products=products, customers=customers)
+    return render_template('pos.html', products=products, customers=customers,
+                           paystack_public_key=os.getenv('PAYSTACK_PUBLIC_KEY', ''))
 
 @app.route('/api/search_product', methods=['GET'])
 @login_required
