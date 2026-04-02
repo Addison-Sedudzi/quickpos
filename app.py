@@ -8,6 +8,11 @@ import psycopg2
 import psycopg2.extras
 import hashlib
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
 import json
 from datetime import datetime, timedelta
 from functools import wraps
