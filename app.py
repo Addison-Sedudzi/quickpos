@@ -1590,8 +1590,12 @@ def initiate_momo():
             else:
                 return jsonify({'success': False, 'message': result.get('message', 'Failed to initiate payment')})
     except urllib.error.HTTPError as e:
-        error_body = _json.loads(e.read().decode())
-        return jsonify({'success': False, 'message': error_body.get('message', str(e))})
+        try:
+            error_body = _json.loads(e.read().decode())
+            message = error_body.get('message', str(e))
+        except Exception:
+            message = f'HTTP Error {e.code}: Check your Paystack secret key'
+        return jsonify({'success': False, 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
